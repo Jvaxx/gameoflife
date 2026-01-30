@@ -1,0 +1,17 @@
+# Fichier de configuration pour clangd
+CompileFlags:
+  Add: [
+    "-std=c++17",
+    "-fno-rtti",
+    "-fno-exceptions",
+    "-Wall",
+    # "-Wextra",
+    "-g",
+    "-O0",
+    "-D_REENTRANT",
+    "-D_GNU_SOURCE=1",
+    "-I/opt/homebrew/include",
+    # "-I/usr/include/SDL3",
+    # "-L/usr/lib",
+    # "-lSDL3"
+  ]
