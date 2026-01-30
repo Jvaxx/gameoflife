@@ -3,6 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <iostream>
+#include <ostream>
+#include <vector>
 namespace Graphics {
 void draw_line_bresenham(Pixel_buffer *buffer, Vector2 p1, Vector2 p2, uint32_t color) {
     using namespace Maths;
@@ -91,6 +94,7 @@ void draw_triangle_horizontal(Pixel_buffer *buffer, Vector2 p1, Vector2 p2, Vect
 }
 
 void draw_triangle(Pixel_buffer *buffer, Vector2 p1, Vector2 p2, Vector2 p3, uint32_t color) {
+    // Fonction à optimiser, elle est très C-style là.
     // tri
     Vector2 *point1 = &p1;
     Vector2 *point2 = &p2;
@@ -121,4 +125,91 @@ void draw_triangle(Pixel_buffer *buffer, Vector2 p1, Vector2 p2, Vector2 p3, uin
     draw_triangle_horizontal(buffer, *point2, point4, *point1, color);
     return;
 }
+
+struct Arrête {
+    Vector2_int p1{};
+    Vector2_int p2{};
+    std::vector<Vector2_int> intersections{};
+
+    Arrête() = default;
+
+    Arrête(Vector2_int point1, Vector2_int point2) {
+        if (point1.y > point2.y) {
+            p1 = point2;
+            p2 = point1;
+        } else {
+            p1 = point1;
+            p2 = point2;
+        }
+        intersections.resize(p2.y - p1.y);
+    }
+};
+
+std::ostream &operator<<(std::ostream &out, const Arrête &arr) {
+    out << "Intersect pr {" << arr.p1.x << " " << arr.p1.y << "} -> {" << arr.p2.x << " " << arr.p2.y << "}\n";
+    for (Vector2_int pt : arr.intersections) {
+        out << "    x: " << pt.x << "    y: " << pt.y << '\n';
+    }
+    return out;
+}
+
+std::ostream &operator<<(std::ostream &out, const std::vector<Arrête> &arrêtes) {
+    for (auto &arr : arrêtes) {
+        out << arr;
+    }
+    return out;
+}
+
+void draw_polygon(Pixel_buffer *buffer, std::vector<Vector2_int> points, uint32_t color) {
+    std::vector<Arrête> arrêtes(points.size());
+    int y_min{points[0].y};
+    int y_max{points[0].y};
+    // Creations des arrêtes
+    for (std::size_t i{}; i < points.size(); ++i) {
+        if (i != points.size() - 1) {
+            arrêtes[i] = Arrête(points[i], points[i + 1]);
+        } else {
+            arrêtes[i] = Arrête(points[0], points[i]);
+        }
+        if (points[i].y < y_min)
+            y_min = points[i].y;
+        if (points[i].y > y_max)
+            y_max = points[i].y;
+    }
+
+    // Calcul des pts d'intersections avc la scanline
+    for (auto &arr : arrêtes) {
+        // std::cout << "Calc pr {" << arr.p1.x << " " << arr.p1.y << "} -> {" << arr.p2.x << " " << arr.p2.y << "}\n";
+        double pente = static_cast<double>((arr.p2.x - arr.p1.x)) / (arr.p2.y - arr.p1.y); // dx/dy
+        for (int Y = arr.p1.y, X = arr.p1.x, i = 0; i < arr.intersections.size(); ++Y, ++i) {
+            // std::cout << "Y: " << Y << '\n';
+            arr.intersections[i] = {X, Y};
+            X += pente;
+        }
+    }
+    // std::cout << arrêtes;
+
+    // Pr chq scanline, création d'une liste des x interceptés.
+    for (int Y{y_min}; Y < y_max; ++Y) {
+        std::vector<int> x_intercepts{};
+        for (auto &arr : arrêtes) {
+            for (auto &pts : arr.intersections) {
+                if (pts.y == Y) {
+                    x_intercepts.push_back(pts.x);
+                }
+            }
+        }
+        for (auto &x : x_intercepts) {
+            std::cout << x << '\n';
+        }
+        std::cout << "\n";
+
+        Maths::sort(x_intercepts);
+        for (int i = 0; i < x_intercepts.size(); i += 2) {
+            // NOTE: refaire bresenham pour accepter Vector2_int et Vector2.
+            draw_line_bresenham(buffer, {x_intercepts[i], Y}, {x_intercepts[i + 1], Y}, color);
+        }
+    }
+}
+
 } // namespace Graphics

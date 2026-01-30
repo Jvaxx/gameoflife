@@ -8,6 +8,7 @@
 #include <SDL3/SDL_video.h>
 #include <cstddef>
 #include <iostream>
+#include <vector>
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL_main.h>
 
@@ -32,6 +33,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     *appstate = state;
 
     main_buffer->resize(game_renderer, 300, 300);
+
+    /*
+        test
+    */
+    std::vector<Vector2_int> poly{
+        {0, 0},
+        {6, 4},
+        {12, 0},
+        {12, 5},
+        {0, 4},
+    };
+    Graphics::draw_polygon(main_buffer, poly, 0);
+
     std::cout << "App initilisée.\n";
     return SDL_APP_CONTINUE;
 }

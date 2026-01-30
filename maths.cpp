@@ -1,5 +1,6 @@
 #include "maths.h"
 #include <cstdint>
+#include <vector>
 namespace Maths {
 int round_float_to_int(double f) {
     return static_cast<int>(f + 0.5f);
@@ -63,5 +64,10 @@ bool cohen_sutherland_frame(Vector2 *p1, Vector2 *p2, int w, int h) {
 void point_float_to_int(Vector2 p1, Vector2_int *p2) {
     p2->x = round_float_to_int(p1.x);
     p2->y = round_float_to_int(p1.y);
+}
+
+template <typename T>
+void sort(std::vector<T> &arr) {
+    // à implémenter
 }
 } // namespace Maths
