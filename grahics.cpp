@@ -1,19 +1,23 @@
 #include "main.h"
 #include "maths.h"
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <ostream>
+#include <utility>
 #include <vector>
 namespace Graphics {
-void draw_line_bresenham(Pixel_buffer *buffer, Vector2 p1, Vector2 p2, uint32_t color) {
+void draw_line_bresenham(Pixel_buffer *buffer, Vector2_int p1, Vector2_int p2, uint32_t color) {
     using namespace Maths;
     if (cohen_sutherland_frame(&p1, &p2, buffer->width, buffer->height)) {
-        int x0{round_float_to_int(p1.x)};
-        int y0{round_float_to_int(p1.y)};
-        int x1{round_float_to_int(p2.x)};
-        int y1{round_float_to_int(p2.y)};
+        int x0{p1.x};
+        int y0{p1.y};
+        int x1{p2.x};
+        int y1{p2.y};
         int dx = (x1 > x0) ? 1 : -1;
         int dy = (y1 > y0) ? 1 : -1;
 
@@ -26,7 +30,7 @@ void draw_line_bresenham(Pixel_buffer *buffer, Vector2 p1, Vector2 p2, uint32_t 
         int small_vector = (!x_main_axis) ? std::abs(x1 - x0) : std::abs(y1 - y0);
         int error = 0;
 
-        while (x0 < x1 && y0 < y1) {
+        for (int i{}; i <= main_vector; ++i) {
             buffer->set_pixel(x0, y0, color);
             *main_axis += main_increment;
             error += small_vector * 2;
@@ -38,177 +42,124 @@ void draw_line_bresenham(Pixel_buffer *buffer, Vector2 p1, Vector2 p2, uint32_t 
     }
 }
 
-void draw_triangle_horizontal(Pixel_buffer *buffer, Vector2 p1, Vector2 p2, Vector2 p3, uint32_t color) {
-    using namespace Maths;
-    Vector2_int start;
-    Vector2_int end;
-    Vector2_int other;
-    point_float_to_int((p2.x > p1.x) ? p1 : p2, &start);
-    point_float_to_int((p2.x > p1.x) ? p2 : p1, &end);
-    point_float_to_int(p3, &other);
-    int increment_start_x = (start.x > other.x) ? -1 : 1;
-    int increment_end_x = (end.x > other.x) ? -1 : 1;
-    int increment_y = (start.y > other.y) ? -1 : 1;
+struct Edge {
+    int y_max;   // Y où l'arête s'arrête
+    float x;     // X courant, on itère dessus.
+    float dx_dy; // dx/dy
 
-    int dx2 = abs(start.x - other.x);
-    int dy = abs(start.y - other.y);
-    int error2 = 0;
-
-    int dx4 = abs(end.x - other.x);
-    int error4 = 0;
-
-    while (start.y != other.y) {
-        if (0 <= start.y && start.y < buffer->height) {
-            int start_draw_x = start.x;
-            if (start_draw_x < 0) {
-                start_draw_x = 0;
-            } else if (start_draw_x >= buffer->width) {
-                start_draw_x = buffer->width - 1;
-            }
-            int end_draw_x = end.x;
-            if (end_draw_x < 0) {
-                end_draw_x = 0;
-            } else if (end_draw_x >= buffer->width) {
-                end_draw_x = buffer->width - 1;
-            }
-            for (int X = start_draw_x;
-                 X < end_draw_x;
-                 ++X) {
-                buffer->set_pixel(X, start.y, color);
-            }
-        }
-        start.y += increment_y;
-        end.y += increment_y;
-        error2 += 2 * dx2;
-        while (error2 > dy) {
-            start.x += increment_start_x;
-            error2 -= 2 * dy;
-        }
-        error4 += 2 * dx4;
-        while (error4 > dy) {
-            end.x += increment_end_x;
-            error4 -= 2 * dy;
-        }
-    }
-    return;
-}
-
-void draw_triangle(Pixel_buffer *buffer, Vector2 p1, Vector2 p2, Vector2 p3, uint32_t color) {
-    // Fonction à optimiser, elle est très C-style là.
-    // tri
-    Vector2 *point1 = &p1;
-    Vector2 *point2 = &p2;
-    Vector2 *point3 = &p3;
-    if (point1->y > point2->y) {
-        Vector2 *inter = point2;
-        point2 = point1;
-        point1 = inter;
-    }
-    if (point2->y > point3->y) {
-        Vector2 *inter = point3;
-        point3 = point2;
-        point2 = inter;
-    }
-    if (point1->y > point2->y) {
-        Vector2 *inter = point2;
-        point2 = point1;
-        point1 = inter;
-    }
-    float x4 = ((point3->x - point1->x) * (point2->y - point1->y) /
-                (point3->y - point1->y)) +
-               point1->x;
-    Vector2 point4 = {x4, point2->y};
-
-    // on a point4.y = point2->y
-    draw_triangle_horizontal(buffer, *point2, point4, *point3, color);
-    // printf("x1: %f  x2: %f\n", point2->x, point4.x);
-    draw_triangle_horizontal(buffer, *point2, point4, *point1, color);
-    return;
-}
-
-struct Arrête {
-    Vector2_int p1{};
-    Vector2_int p2{};
-    std::vector<Vector2_int> intersections{};
-
-    Arrête() = default;
-
-    Arrête(Vector2_int point1, Vector2_int point2) {
-        if (point1.y > point2.y) {
-            p1 = point2;
-            p2 = point1;
-        } else {
-            p1 = point1;
-            p2 = point2;
-        }
-        intersections.resize(p2.y - p1.y);
+    bool operator<(const Edge &other) const {
+        return x < other.x;
     }
 };
 
-std::ostream &operator<<(std::ostream &out, const Arrête &arr) {
-    out << "Intersect pr {" << arr.p1.x << " " << arr.p1.y << "} -> {" << arr.p2.x << " " << arr.p2.y << "}\n";
-    for (Vector2_int pt : arr.intersections) {
-        out << "    x: " << pt.x << "    y: " << pt.y << '\n';
-    }
-    return out;
-}
+void draw_polygon(Pixel_buffer *buffer, const std::vector<Vector2> &pts, uint32_t color) {
+    if (pts.empty())
+        return;
 
-std::ostream &operator<<(std::ostream &out, const std::vector<Arrête> &arrêtes) {
-    for (auto &arr : arrêtes) {
-        out << arr;
+    // Tableau des arêtes
+    int min_y = pts[0].y;
+    int max_y = pts[0].y;
+    int min_x = pts[0].x;
+    int max_x = pts[0].x;
+    for (const auto &p : pts) {
+        if (p.y < min_y)
+            min_y = p.y;
+        if (p.y > max_y)
+            max_y = p.y;
+        if (p.x < min_x)
+            min_x = p.x;
+        if (p.x > max_x)
+            max_x = p.x;
     }
-    return out;
-}
+    if (max_y < 0 || min_y >= buffer->height || max_x < 0 || min_x >= buffer->width)
+        return;
 
-void draw_polygon(Pixel_buffer *buffer, std::vector<Vector2_int> points, uint32_t color) {
-    std::vector<Arrête> arrêtes(points.size());
-    int y_min{points[0].y};
-    int y_max{points[0].y};
-    // Creations des arrêtes
-    for (std::size_t i{}; i < points.size(); ++i) {
-        if (i != points.size() - 1) {
-            arrêtes[i] = Arrête(points[i], points[i + 1]);
-        } else {
-            arrêtes[i] = Arrête(points[0], points[i]);
+    std::vector<std::vector<Edge>> edges_starting_at(max_y - min_y + 1);
+    for (size_t i{}; i < pts.size(); ++i) {
+        Vector2 p1 = pts[i];
+        Vector2 p2 = pts[(i + 1) % pts.size()];
+
+        if (p1.y == p2.y)
+            continue; // horizontal donc inutile
+        if (p1.y > p2.y)
+            std::swap(p1, p2);
+
+        Edge edge;
+        edge.y_max = p2.y;
+        edge.x = static_cast<float>(p1.x);
+        edge.dx_dy = static_cast<float>(p2.x - p1.x) / (p2.y - p1.y);
+
+        edges_starting_at[p1.y - min_y].push_back(edge);
+    }
+
+    std::vector<Edge> active_edges;
+    // scanline
+    for (int y = min_y; y < max_y; ++y) {
+        if (y - min_y < edges_starting_at.size()) {
+            auto &new_edges = edges_starting_at[y - min_y];
+            active_edges.insert(active_edges.end(), new_edges.begin(), new_edges.end());
         }
-        if (points[i].y < y_min)
-            y_min = points[i].y;
-        if (points[i].y > y_max)
-            y_max = points[i].y;
-    }
 
-    // Calcul des pts d'intersections avc la scanline
-    for (auto &arr : arrêtes) {
-        // std::cout << "Calc pr {" << arr.p1.x << " " << arr.p1.y << "} -> {" << arr.p2.x << " " << arr.p2.y << "}\n";
-        double pente = static_cast<double>((arr.p2.x - arr.p1.x)) / (arr.p2.y - arr.p1.y); // dx/dy
-        for (int Y = arr.p1.y, X = arr.p1.x, i = 0; i < arr.intersections.size(); ++Y, ++i) {
-            // std::cout << "Y: " << Y << '\n';
-            arr.intersections[i] = {X, Y};
-            X += pente;
-        }
-    }
-    // std::cout << arrêtes;
+        // NOTE: Implémenter Maths::remove_if?
+        active_edges.erase(
+            std::remove_if(active_edges.begin(), active_edges.end(),
+                           [y](const Edge &e) { return y >= e.y_max; }),
+            active_edges.end());
 
-    // Pr chq scanline, création d'une liste des x interceptés.
-    for (int Y{y_min}; Y < y_max; ++Y) {
-        std::vector<int> x_intercepts{};
-        for (auto &arr : arrêtes) {
-            for (auto &pts : arr.intersections) {
-                if (pts.y == Y) {
-                    x_intercepts.push_back(pts.x);
+        // NOTE: Implémenter Maths::merge_sort pour tous les types?
+        std::sort(active_edges.begin(), active_edges.end());
+
+        if (y >= 0 && y < buffer->height) {
+            uint32_t *pixel_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y * buffer->width;
+            for (size_t i = 0; i < active_edges.size(); i += 2) {
+                if (i + 1 >= active_edges.size())
+                    break; // si immpartié (probablement impossible?)
+
+                // TODO: Implémenter Maths::ceil
+                int x_start = static_cast<int>(std::ceil(active_edges[i].x));
+                int x_end = static_cast<int>(std::ceil(active_edges[i + 1].x));
+
+                if (x_end >= buffer->width)
+                    x_end = buffer->width;
+                if (x_start < 0)
+                    x_start = 0;
+
+                for (int x = x_start; x < x_end; ++x) {
+                    pixel_ptr[x] = color;
                 }
             }
         }
-        for (auto &x : x_intercepts) {
-            std::cout << x << '\n';
-        }
-        std::cout << "\n";
 
-        Maths::sort(x_intercepts);
-        for (int i = 0; i < x_intercepts.size(); i += 2) {
-            // NOTE: refaire bresenham pour accepter Vector2_int et Vector2.
-            draw_line_bresenham(buffer, {x_intercepts[i], Y}, {x_intercepts[i + 1], Y}, color);
+        for (auto &edge : active_edges) {
+            edge.x += edge.dx_dy;
         }
+    }
+}
+
+void draw_line_horizontal(Pixel_buffer *buffer, int y, int x1, int x2, uint32_t color) {
+    if (x2 < x1)
+        std::swap(x1, x2);
+    if (x2 < 0 || x1 >= buffer->width || y < 0 || y >= buffer->height)
+        return;
+    x1 = (x1 < 0) ? 0 : x1;
+    x2 = (x2 >= buffer->width) ? buffer->width - 1 : x2;
+    uint32_t *pix_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y * buffer->width;
+    for (; x1 <= x2; ++x1) {
+        pix_ptr[x1] = color;
+    }
+}
+
+void draw_line_vertical(Pixel_buffer *buffer, int x, int y1, int y2, uint32_t color) {
+    if (y2 < y1)
+        std::swap(y1, y2);
+    if (x < 0 || x >= buffer->width || y2 < 0 || y1 >= buffer->height)
+        return;
+    y1 = (y1 < 0) ? 0 : y1;
+    y2 = (y2 >= buffer->height) ? buffer->height - 1 : y2;
+    uint32_t *pix_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y1 * buffer->width + x;
+    for (; y1 <= y2; ++y1) {
+        *pix_ptr = color;
+        pix_ptr += buffer->width;
     }
 }
 
