@@ -20,7 +20,7 @@ static SDL_Window *game_window = std::nullptr_t();
 static SDL_Renderer *game_renderer = std::nullptr_t();
 static Pixel_buffer *main_buffer = new Pixel_buffer{};
 static View *game_view = new View{main_buffer};
-static Grid *game_grid = new Grid(5, 5);
+static Grid *game_grid = new Grid(15, 15);
 
 bool get_bounding_box(View *view, Grid *grid, int *c_min, int *c_max, int *r_min, int *r_max) {
     // NOTE: Full heuristique, pas sûr des cas limite, et pas opti. (voir bounding box "AABB")
@@ -110,6 +110,33 @@ void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
     }
 }
 
+void update_grid(Grid &grid) {
+    Grid old_grid{grid};
+    for (int row{}; row < grid.h; ++row) {
+        for (int col{}; col < grid.w; ++col) {
+            int sum{};
+            for (int x{-1}; x < 2; ++x) {
+                for (int y{-1}; y < 2; ++y) {
+                    if (col + x >= 0 && col + x < grid.w && row + y >= 0 && row + y < grid.h && (x != 0 || y != 0))
+                        sum += (old_grid.get(col + x, row + y)) ? 1 : 0;
+                }
+            }
+            switch (sum) {
+            case 3:
+                grid.set(col, row, 1);
+                break;
+
+            case 2:
+                grid.set(col, row, grid.get(col, row));
+                break;
+
+            default:
+                grid.set(col, row, 0);
+            }
+        }
+    }
+}
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::cerr << "Init video en échec.\n";
@@ -126,12 +153,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     state->last_tick = SDL_GetTicks();
     *appstate = state;
     main_buffer->resize(game_renderer, 600, 600);
-    game_view->origin.x = 3;
-    game_view->origin.y = 3;
-    game_view->pix_per_m = 30;
-    game_grid->origin.x = -3;
-    game_grid->origin.y = -3;
-    game_view->theta = 0.4f;
+    game_view->origin.x = 5;
+    game_view->origin.y = 5;
+    game_view->pix_per_m = 20;
+    game_view->theta = 0;
+    game_grid->origin.x = 0;
+    game_grid->origin.y = 0;
+
+    game_grid->set(1, 10, 1);
+    game_grid->set(2, 9, 1);
+    game_grid->set(2, 8, 1);
+    game_grid->set(1, 8, 1);
+    game_grid->set(0, 8, 1);
 
     std::cout << "App initilisée.\n";
     return SDL_APP_CONTINUE;
@@ -140,22 +173,50 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 SDL_AppResult SDL_AppIterate(void *appstate) {
     Game_state *state = static_cast<Game_state *>(appstate);
     uint64_t tick{SDL_GetTicks()};
-    if (tick - state->last_tick > 50) {
+    if (tick - state->last_tick > 500) {
+        if (state->input.left_button.is_pressed) {
+            std::cout << "    Reçu en " << state->input.left_button.x << ", " << state->input.left_button.y << '\n';
+            Vector2 origin{state->input.left_button.x, state->input.left_button.y};
+
+            const View_Matrix m3 = Maths::create_view_mat(game_view->origin, game_view->theta,
+                                                          game_view->pix_per_m,
+                                                          game_view->buffer->width,
+                                                          game_view->buffer->height);
+            Vector2 result = Maths::scr_to_world(origin, m3);
+            std::cout << "    En réel: " << result.x << ", " << result.y << '\n';
+            state->input.left_button.is_pressed = 0;
+        }
+
         main_buffer->clear_pixel(0xFFFF00FF);
         fill_grid(game_view, game_grid, game_renderer);
         draw_grid(game_view, game_grid, game_renderer);
+        update_grid(*game_grid);
         // game_view->origin.x -= 0.1f;
-        game_view->theta += 0.001;
         main_buffer->update(game_renderer);
-        state->last_tick += 50;
+        state->last_tick += 500;
     }
     return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
-    if (event->type == SDL_EVENT_QUIT) {
+    Game_state *state = reinterpret_cast<Game_state *>(appstate);
+    switch (event->type) {
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        std::cout << "Mouse pressed: " << ((event->button.button == SDL_BUTTON_LEFT) ? "OUI" : "NON") << " " << event->button.down
+                  << " " << event->button.x << ", " << event->button.y << '\n';
+        if (event->button.button == SDL_BUTTON_LEFT) {
+            state->input.left_button.is_pressed = (event->button.down) ? 1 : state->input.left_button.is_pressed;
+            state->input.left_button.x = event->button.x;
+            state->input.left_button.y = event->button.y;
+        }
+        break;
+    case SDL_EVENT_QUIT:
         std::cout << "On quitte avec succès.\n";
         return SDL_APP_SUCCESS;
+
+    default:
+        return SDL_APP_CONTINUE;
     }
     return SDL_APP_CONTINUE;
 }

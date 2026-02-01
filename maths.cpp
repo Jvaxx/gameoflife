@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <ostream>
 #include <vector>
@@ -165,5 +166,22 @@ std::vector<Vector2> world_to_scr(const std::vector<Vector2> &reals, const View_
         };
     }
     return res;
+}
+
+Vector2 scr_to_world(const Vector2 &scr, const View_Matrix &m) {
+    // BUG: Problème quelque part. Tranfo * tranfo^-1 != Id. (c'est pas observé en tout cas)
+    float det = m.m00 * m.m11 - m.m10 * m.m01;
+    if (std::abs(det) < 1e-6f) {
+        return {0.0f, 0.0f};
+    }
+    float inv_det = 1 / det;
+    float dx = scr.x - m.m02;
+    float dy = scr.y - m.m12;
+    return {
+        (m.m11 * dx - m.m01 * dy) * inv_det,
+        (-m.m10 * dx + m.m00 * dy) * inv_det};
+}
+Vector2 scr_to_world(const Vector2_int &scr, const View_Matrix &m) {
+    return scr_to_world(Vector2{static_cast<float>(scr.x), static_cast<float>(scr.y)}, m);
 }
 } // namespace Maths

@@ -33,6 +33,9 @@ View_Matrix create_view_mat(const Vector2 &cam_pos, float theta, float ppm, int 
 Vector2 world_to_scr(const Vector2 &real, const View_Matrix &m3);
 std::vector<Vector2> world_to_scr(const std::vector<Vector2> &reals, const View_Matrix &m3);
 
+Vector2 scr_to_world(const Vector2 &scr, const View_Matrix &m);
+Vector2 scr_to_world(const Vector2_int &scr, const View_Matrix &m);
+
 } // namespace Maths
 
 template <typename T>

@@ -8,8 +8,21 @@
 #include <memory>
 #include <vector>
 
+struct Mouse_input {
+    bool is_pressed{};
+    float x;
+    float y;
+};
+
+struct Game_input {
+    // Gérer le clic etc
+    Mouse_input left_button{};
+    Mouse_input right_button{};
+};
+
 struct Game_state {
     uint64_t last_tick;
+    Game_input input;
 };
 
 struct Texture_deleter {
@@ -62,7 +75,7 @@ struct Grid {
     // Une grille de game of life.
     int w{20};
     int h{20};
-    float tile_size{2.0}; // en mètres
+    float tile_size{1.0}; // en mètres
     Vector2 origin{0, 0};
     std::vector<int> tiles{};
 
