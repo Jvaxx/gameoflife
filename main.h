@@ -1,3 +1,4 @@
+#include <iostream>
 #ifndef MAIN_H
 #include "maths.h"
 #include <SDL3/SDL_render.h>
@@ -74,6 +75,7 @@ struct Grid {
     }
 
     int &get(int x, int y) {
+        // std::cout << "appel avec: " << x << " " << y << '\n';
         assert((x >= 0 && x < w && y >= 0 && y < h) && "Pb de dimensions");
         return tiles[x + w * y];
     }
@@ -87,8 +89,8 @@ struct View {
     // Le view-port, distances et coordonnées en mètres. Y va vers le bas.
     Pixel_buffer *buffer;
     float pix_per_m{50};  // Le zoom
-    float angle{0};       // En radians
-    Vector2 origin{0, 0}; // En haut à gauche, en mètres
+    float theta{0};       // En radians
+    Vector2 origin{0, 0}; // Le milieu du view-port, en mètres
 };
 
 #define MAIN_H

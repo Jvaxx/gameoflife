@@ -1,4 +1,7 @@
 #include "maths.h"
+#include "main.h"
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <ostream>
@@ -63,9 +66,16 @@ bool cohen_sutherland_frame(Vector2_int *p1, Vector2_int *p2, int w, int h) {
     }
 }
 
-void point_float_to_int(Vector2 p1, Vector2_int *p2) {
-    p2->x = round_float_to_int(p1.x);
-    p2->y = round_float_to_int(p1.y);
+Vector2_int pt_float_to_int(Vector2 &vect) {
+    return {static_cast<int>(vect.x), static_cast<int>(vect.y)};
+}
+
+std::vector<Vector2_int> pt_float_to_int(std::vector<Vector2> &vect) {
+    std::vector<Vector2_int> res(vect.size());
+    for (size_t i{}; i < vect.size(); ++i) {
+        res[i] = pt_float_to_int(vect[i]);
+    }
+    return res;
 }
 
 template <typename T>
@@ -79,15 +89,12 @@ std::ostream &operator<<(std::ostream &out, const std::vector<T> &arr) {
 
 template <typename T>
 void merge(std::vector<T> &arr, int left, int right) {
-    // std::cout << "Merge de " << left << " à " << right << "\n";
     if (left >= right) {
         return;
     }
     int mid = left + (right - left) / 2;
-    // std::cout << "    mid: " << mid << '\n';
     merge(arr, left, mid);
     merge(arr, mid + 1, right);
-    // std::cout << "    Merge.\n";
 
     std::vector<T> L(mid - left + 1);
     std::vector<T> R(right - mid);
@@ -97,10 +104,6 @@ void merge(std::vector<T> &arr, int left, int right) {
     for (int j{}; j < right - mid; ++j) {
         R[j] = arr[mid + j + 1];
     }
-    // std::cout << "    Les parties gauche/droite:\n";
-    // std::cout << "        " << L;
-    // std::cout << "        " << R;
-
     int i{}, j{}, k{};
     while (i < mid - left + 1 && j < right - mid) {
         if (L[i] <= R[j]) {
@@ -109,18 +112,58 @@ void merge(std::vector<T> &arr, int left, int right) {
             arr[left + k++] = R[j++];
         }
     }
-
     while (i < mid - left + 1) {
         arr[left + k++] = L[i++];
     }
     while (j < right - mid) {
         arr[left + k++] = R[j++];
     }
-    // std::cout << "    Le résultat du tri:\n    " << arr << "\n\n";
 }
 
 void merge_sort(std::vector<int> &arr) {
     int n = arr.size();
     merge(arr, 0, n - 1);
+}
+
+std::vector<float> operator*(const std::vector<float> &v, const float m) {
+    std::vector<float> res(v.size());
+    for (int i{}; i < v.size(); ++i) {
+        res[i] = v[i] * m;
+    }
+    return res;
+}
+
+std::ostream &operator<<(std::ostream &out, const Vector2 &arr) {
+    out << "x: " << arr.x << "  " << arr.y;
+    return out;
+}
+
+View_Matrix create_view_mat(const Vector2 &cam_pos, float theta, float ppm, int screen_w, int screen_h) {
+    float cos_t = std::cos(-theta);
+    float sin_t = std::sin(-theta);
+    float offs_x = screen_w * 0.5f;
+    float offs_y = screen_h * 0.5f;
+
+    // Matrice de transfo: Tr_viewport * Scale * Rot * Tr_origine avec inversion de l'axe y
+    return {
+        cos_t * ppm, -sin_t * ppm, offs_x - (cam_pos.x * cos_t * ppm) + (cam_pos.y * sin_t * ppm),
+        sin_t * -ppm, cos_t * -ppm, offs_y - (cam_pos.x * sin_t * -ppm) - (cam_pos.y * cos_t * -ppm)};
+}
+
+Vector2 world_to_scr(const Vector2 &real, const View_Matrix &m3) {
+    return {
+        real.x * m3.m00 + real.y * m3.m01 + m3.m02,
+        real.x * m3.m10 + real.y * m3.m11 + m3.m12,
+    };
+}
+std::vector<Vector2> world_to_scr(const std::vector<Vector2> &reals, const View_Matrix &m3) {
+    std::vector<Vector2> res(reals.size());
+    for (int i{}; i < reals.size(); ++i) {
+        res[i] = {
+            reals[i].x * m3.m00 + reals[i].y * m3.m01 + m3.m02,
+            reals[i].x * m3.m10 + reals[i].y * m3.m11 + m3.m12,
+        };
+    }
+    return res;
 }
 } // namespace Maths

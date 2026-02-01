@@ -14,63 +14,99 @@
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL_main.h>
 
+float pi = std::numbers::pi_v<float>;
+
 static SDL_Window *game_window = std::nullptr_t();
 static SDL_Renderer *game_renderer = std::nullptr_t();
 static Pixel_buffer *main_buffer = new Pixel_buffer{};
 static View *game_view = new View{main_buffer};
 static Grid *game_grid = new Grid(5, 5);
 
-void draw_grid_opti(View *view, Grid *grid, SDL_Renderer *renderer) {
-    uint32_t grid_color = 0xFF00FF00; // Vert
-    int screen_w = view->buffer->width;
-    int screen_h = view->buffer->height;
+bool get_bounding_box(View *view, Grid *grid, int *c_min, int *c_max, int *r_min, int *r_max) {
+    // NOTE: Full heuristique, pas sûr des cas limite, et pas opti. (voir bounding box "AABB")
+    float sqr = std::sqrt(std::pow(view->buffer->height, 2) + std::pow(view->buffer->width, 2)) / 2;
+    float itan = std::atan2(view->buffer->height, view->buffer->width);
+    float x_max = sqr * std::cos(-itan + std::remainder(view->theta, pi / 2)) + view->origin.x;
+    float y_max = sqr * std::sin(itan + std::remainder(view->theta, pi / 2)) + view->origin.y;
+    float x_min = -sqr * std::cos(-itan + std::remainder(view->theta, pi / 2)) + view->origin.x;
+    float y_min = -sqr * std::sin(itan + std::remainder(view->theta, pi / 2)) + view->origin.y;
 
-    float grid_world_w = grid->w * grid->tile_size;
-    float grid_world_h = grid->h * grid->tile_size;
+    // limites d'affichage théorique de la grille
+    int col_min = static_cast<int>(x_min / grid->tile_size - grid->origin.x);
+    int raw_min = static_cast<int>(y_min / grid->tile_size - grid->origin.y);
+    int col_max = static_cast<int>(x_max / grid->tile_size - grid->origin.x + 0.9f);
+    int raw_max = static_cast<int>(y_max / grid->tile_size - grid->origin.y + 0.9f);
+    if (col_min >= grid->w || raw_min >= grid->h || col_max < 0 || raw_max < 0)
+        return false; // complètement en dehors de l'écran
 
-    int grid_screen_x0 = static_cast<int>((0.0f - view->origin.x) * view->pix_per_m);
-    int grid_screen_y0 = static_cast<int>((0.0f - view->origin.y) * view->pix_per_m);
-    int grid_screen_x1 = static_cast<int>((grid_world_w - view->origin.x) * view->pix_per_m);
-    int grid_screen_y1 = static_cast<int>((grid_world_h - view->origin.y) * view->pix_per_m);
+    // limites de la grilles réelles
+    *c_min = (col_min < 0) ? 0 : col_min;
+    *r_min = (raw_min < 0) ? 0 : raw_min;
+    *c_max = (col_max > grid->w) ? grid->w : col_max;
+    *r_max = (raw_max > grid->h) ? grid->h : raw_max;
+    return true;
+}
 
-    int v_line_y_start = std::clamp(grid_screen_y0, 0, screen_h);
-    int v_line_y_end = std::clamp(grid_screen_y1, 0, screen_h);
+void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
+    // calcul des limites d'affichage (en coordonnées réelles)
+    int col_min, raw_min, col_max, raw_max;
+    if (!get_bounding_box(view, grid, &col_min, &col_max, &raw_min, &raw_max))
+        return; // complètement en dehors de l'écran
 
-    int h_line_x_start = std::clamp(grid_screen_x0, 0, screen_w);
-    int h_line_x_end = std::clamp(grid_screen_x1, 0, screen_w);
+    const View_Matrix m3 = Maths::create_view_mat(view->origin, view->theta,
+                                                  view->pix_per_m,
+                                                  view->buffer->width,
+                                                  view->buffer->height);
 
-    if (v_line_y_start > v_line_y_end || h_line_x_start > h_line_x_end)
-        return;
+    for (int Y{raw_min}; Y < raw_max; ++Y) {
+        for (int X{col_min}; X < col_max; ++X) {
+            std::vector<Vector2> tile{
+                {X * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
+                {(X + 1) * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
+                {(X + 1) * grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
+                {X * grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
+            };
 
-    float world_left = view->origin.x;
-    float world_right = view->origin.x + (screen_w / view->pix_per_m);
-
-    float world_top = view->origin.y;
-    float world_bottom = view->origin.y + (screen_h / view->pix_per_m);
-
-    int col_min = std::clamp(static_cast<int>(std::floor(world_left / grid->tile_size)), 0, grid->w);
-    int col_max = std::clamp(static_cast<int>(std::ceil(world_right / grid->tile_size)), 0, grid->w);
-    int row_min = std::clamp(static_cast<int>(std::floor(world_top / grid->tile_size)), 0, grid->h);
-    int row_max = std::clamp(static_cast<int>(std::ceil(world_bottom / grid->tile_size)), 0, grid->h);
-
-    // lignes verticales
-    for (int col = col_min; col <= col_max; ++col) {
-        // Coordonnée X de la ligne verticale
-        int screen_x = static_cast<int>((col * grid->tile_size - view->origin.x) * view->pix_per_m);
-
-        if (screen_x >= 0 && screen_x < screen_w) {
-            Graphics::draw_line_vertical(view->buffer, screen_x, v_line_y_start, v_line_y_end, grid_color);
+            tile = Maths::world_to_scr(tile, m3);
+            if (grid->get(X, Y)) {
+                Graphics::draw_polygon(view->buffer, tile, 0xFF0000FF);
+            } else {
+                Graphics::draw_polygon(view->buffer, tile, 0xFFFFFFFF);
+            }
         }
+    }
+}
+
+void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
+    // calcul des limites d'affichage (en coordonnées réelles)
+    int col_min, raw_min, col_max, raw_max;
+    if (!get_bounding_box(view, grid, &col_min, &col_max, &raw_min, &raw_max))
+        return; // complètement en dehors de l'écran
+
+    const View_Matrix m3 = Maths::create_view_mat(view->origin, view->theta,
+                                                  view->pix_per_m,
+                                                  view->buffer->width,
+                                                  view->buffer->height);
+    // lignes verticales
+    for (int X{col_min}; X <= col_max; ++X) {
+        Vector2 p1 = {X * grid->tile_size + grid->origin.x, raw_min * grid->tile_size + grid->origin.y};
+        Vector2 p2 = {X * grid->tile_size + grid->origin.x, (raw_max + 0) * grid->tile_size + grid->origin.y};
+        p1 = Maths::world_to_scr(p1, m3);
+        p2 = Maths::world_to_scr(p2, m3);
+        Vector2_int p1_int = Maths::pt_float_to_int(p1);
+        Vector2_int p2_int = Maths::pt_float_to_int(p2);
+        Graphics::draw_line_bresenham(view->buffer, p1_int, p2_int, 0xFF00FF00);
     }
 
     // lignes horizontales
-    for (int row = row_min; row <= row_max; ++row) {
-        // Coordonnée Y de la ligne horizontale
-        int screen_y = static_cast<int>((row * grid->tile_size - view->origin.y) * view->pix_per_m);
-
-        if (screen_y >= 0 && screen_y < screen_h) {
-            Graphics::draw_line_horizontal(view->buffer, screen_y, h_line_x_start, h_line_x_end, grid_color);
-        }
+    for (int Y{raw_min}; Y <= raw_max; ++Y) {
+        Vector2 p1 = {col_min * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y};
+        Vector2 p2 = {(col_max + 0) * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y};
+        p1 = Maths::world_to_scr(p1, m3);
+        p2 = Maths::world_to_scr(p2, m3);
+        Vector2_int p1_int = Maths::pt_float_to_int(p1);
+        Vector2_int p2_int = Maths::pt_float_to_int(p2);
+        Graphics::draw_line_bresenham(view->buffer, p1_int, p2_int, 0xFF00FF00);
     }
 }
 
@@ -89,8 +125,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     Game_state *state = new Game_state{};
     state->last_tick = SDL_GetTicks();
     *appstate = state;
-
     main_buffer->resize(game_renderer, 600, 600);
+    game_view->origin.x = 3;
+    game_view->origin.y = 3;
+    game_view->pix_per_m = 30;
+    game_grid->origin.x = -3;
+    game_grid->origin.y = -3;
+    game_view->theta = 0.4f;
 
     std::cout << "App initilisée.\n";
     return SDL_APP_CONTINUE;
@@ -99,18 +140,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 SDL_AppResult SDL_AppIterate(void *appstate) {
     Game_state *state = static_cast<Game_state *>(appstate);
     uint64_t tick{SDL_GetTicks()};
-    if (tick - state->last_tick > 500) {
+    if (tick - state->last_tick > 50) {
         main_buffer->clear_pixel(0xFFFF00FF);
-        draw_grid_opti(game_view, game_grid, game_renderer);
-        game_view->origin.x -= 0.1f;
-        // std::vector<Vector2> poly{
-        //     {-20, 100},
-        //     {100, 200},
-        //     {60, 150},
-        //     {50, 0}};
-        // Graphics::draw_polygon(main_buffer, poly, 0xFF00FF00);
+        fill_grid(game_view, game_grid, game_renderer);
+        draw_grid(game_view, game_grid, game_renderer);
+        // game_view->origin.x -= 0.1f;
+        game_view->theta += 0.001;
         main_buffer->update(game_renderer);
-        state->last_tick += 500;
+        state->last_tick += 50;
     }
     return SDL_APP_CONTINUE;
 }

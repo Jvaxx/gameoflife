@@ -1,7 +1,7 @@
 # Fichier de configuration pour clangd
 CompileFlags:
   Add: [
-    "-std=c++17",
+    "-std=c++20",
     "-fno-rtti",
     "-fno-exceptions",
     "-Wall",
