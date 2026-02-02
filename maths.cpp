@@ -139,49 +139,45 @@ std::ostream &operator<<(std::ostream &out, const Vector2 &arr) {
     return out;
 }
 
-View_Matrix create_view_mat(const Vector2 &cam_pos, float theta, float ppm, int screen_w, int screen_h) {
-    float cos_t = std::cos(-theta);
-    float sin_t = std::sin(-theta);
+View_Matrix mat_w_to_scr(const Vector2 &cam_pos, float theta, float ppm, int screen_w, int screen_h) {
+    // Matrice de transfo homogène (juste les deux premières lignes) Monde->Ecran
+    // Combine les tranfo: Tr(screen_center) * Scale(ppm et inversion axe y) * Rot(-theta) * Tr(-cam_pos)
+    float cos_t = std::cos(theta);
+    float sin_t = std::sin(theta);
     float offs_x = screen_w * 0.5f;
     float offs_y = screen_h * 0.5f;
 
-    // Matrice de transfo: Tr_viewport * Scale * Rot * Tr_origine avec inversion de l'axe y
     return {
-        cos_t * ppm, -sin_t * ppm, offs_x - (cam_pos.x * cos_t * ppm) + (cam_pos.y * sin_t * ppm),
-        sin_t * -ppm, cos_t * -ppm, offs_y - (cam_pos.x * sin_t * -ppm) - (cam_pos.y * cos_t * -ppm)};
+        cos_t * ppm, sin_t * ppm, offs_x - ppm * (cam_pos.x * cos_t + cam_pos.y * sin_t),
+        sin_t * ppm, cos_t * -ppm, offs_y - ppm * (cam_pos.x * sin_t - cam_pos.y * cos_t)};
 }
 
-Vector2 world_to_scr(const Vector2 &real, const View_Matrix &m3) {
+View_Matrix mat_scr_to_w(const Vector2 &cam_pos, float theta, float ppm, int screen_w, int screen_h) {
+    // Matrice de transfo homogène (juste les deux premières lignes) Ecran->World
+    // Combine les tranfo: Tr(cam_pos) * Rot(theta) * Scale(1/ppm et inversion axe y) * Tr(-Screen_center)
+    float cos_t = std::cos(theta);
+    float sin_t = std::sin(theta);
+    float offs_x = screen_w * 0.5f;
+    float offs_y = screen_h * 0.5f;
+    float mpp{1 / ppm};
+
+    return {
+        cos_t * mpp, sin_t * mpp, cam_pos.x - mpp * (offs_x * cos_t + offs_y * sin_t),
+        sin_t * mpp, cos_t * -mpp, cam_pos.y - mpp * (offs_x * sin_t - offs_y * cos_t)};
+}
+
+Vector2 transformed(const Vector2 &real, const View_Matrix &m3) {
+    // Effecture la transformation m3 * real
     return {
         real.x * m3.m00 + real.y * m3.m01 + m3.m02,
         real.x * m3.m10 + real.y * m3.m11 + m3.m12,
     };
 }
-std::vector<Vector2> world_to_scr(const std::vector<Vector2> &reals, const View_Matrix &m3) {
+std::vector<Vector2> transformed(const std::vector<Vector2> &reals, const View_Matrix &m3) {
     std::vector<Vector2> res(reals.size());
     for (int i{}; i < reals.size(); ++i) {
-        res[i] = {
-            reals[i].x * m3.m00 + reals[i].y * m3.m01 + m3.m02,
-            reals[i].x * m3.m10 + reals[i].y * m3.m11 + m3.m12,
-        };
+        res[i] = {transformed(reals[i], m3)};
     }
     return res;
-}
-
-Vector2 scr_to_world(const Vector2 &scr, const View_Matrix &m) {
-    // BUG: Problème quelque part. Tranfo * tranfo^-1 != Id. (c'est pas observé en tout cas)
-    float det = m.m00 * m.m11 - m.m10 * m.m01;
-    if (std::abs(det) < 1e-6f) {
-        return {0.0f, 0.0f};
-    }
-    float inv_det = 1 / det;
-    float dx = scr.x - m.m02;
-    float dy = scr.y - m.m12;
-    return {
-        (m.m11 * dx - m.m01 * dy) * inv_det,
-        (-m.m10 * dx + m.m00 * dy) * inv_det};
-}
-Vector2 scr_to_world(const Vector2_int &scr, const View_Matrix &m) {
-    return scr_to_world(Vector2{static_cast<float>(scr.x), static_cast<float>(scr.y)}, m);
 }
 } // namespace Maths

@@ -18,6 +18,7 @@ struct View_Matrix {
     float m00, m01, m02;
     float m10, m11, m12;
 };
+const float pi = std::numbers::pi_v<float>;
 
 namespace Maths {
 
@@ -28,13 +29,11 @@ bool cohen_sutherland_frame(Vector2_int *p1, Vector2_int *p2, int w, int h);
 
 void merge_sort(std::vector<int> &arr);
 
-View_Matrix create_view_mat(const Vector2 &cam_pos, float theta, float ppm, int screen_w, int screen_h);
+View_Matrix mat_w_to_scr(const Vector2 &cam_pos, float theta, float ppm, int screen_w, int screen_h);
+View_Matrix mat_scr_to_w(const Vector2 &cam_pos, float theta, float ppm, int screen_w, int screen_h);
 
-Vector2 world_to_scr(const Vector2 &real, const View_Matrix &m3);
-std::vector<Vector2> world_to_scr(const std::vector<Vector2> &reals, const View_Matrix &m3);
-
-Vector2 scr_to_world(const Vector2 &scr, const View_Matrix &m);
-Vector2 scr_to_world(const Vector2_int &scr, const View_Matrix &m);
+Vector2 transformed(const Vector2 &real, const View_Matrix &m3);
+std::vector<Vector2> transformed(const std::vector<Vector2> &reals, const View_Matrix &m3);
 
 } // namespace Maths
 
