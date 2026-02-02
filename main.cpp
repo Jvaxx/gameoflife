@@ -61,19 +61,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 SDL_AppResult SDL_AppIterate(void *appstate) {
     Game_state *state = static_cast<Game_state *>(appstate);
     uint64_t tick{SDL_GetTicks()};
+    if (state->input.left_button.is_pressed) {
+        std::cout << "    Reçu en " << state->input.left_button.x << ", " << state->input.left_button.y << '\n';
+        Vector2 origin{state->input.left_button.x, state->input.left_button.y};
+        tile_clic(*game_view, *game_grid, origin);
+        state->input.left_button.is_pressed = 0;
+    }
     if (tick - state->last_tick > 500) {
-        if (state->input.left_button.is_pressed) {
-            std::cout << "    Reçu en " << state->input.left_button.x << ", " << state->input.left_button.y << '\n';
-            Vector2 origin{state->input.left_button.x, state->input.left_button.y};
-
-            const View_Matrix m3 = Maths::mat_scr_to_w(game_view->origin, game_view->theta,
-                                                       game_view->pix_per_m,
-                                                       game_view->buffer->width,
-                                                       game_view->buffer->height);
-            Vector2 result = Maths::transformed(origin, m3);
-            std::cout << "    En réel: " << result.x << ", " << result.y << '\n';
-            state->input.left_button.is_pressed = 0;
-        }
 
         main_buffer->clear_pixel(0xFFFF00FF);
         fill_grid(game_view, game_grid, game_renderer);

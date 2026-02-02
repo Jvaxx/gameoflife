@@ -7,6 +7,10 @@
 struct Vector2 {
     float x{};
     float y{};
+
+    Vector2 operator+=(const Vector2 &in) {
+        return {x + in.x, y + in.y};
+    }
 };
 
 struct Vector2_int {

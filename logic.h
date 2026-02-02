@@ -106,5 +106,7 @@ struct View {
 void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer);
 void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer);
 void update_grid(Grid &grid);
+Vector2 px_to_tile(View &view, Grid &grid, Vector2 &in);
+bool tile_clic(View &view, Grid &grid, Vector2 &in);
 #define LOGIC_H
 #endif // !LOGIC_H

@@ -115,3 +115,27 @@ void update_grid(Grid &grid) {
         }
     }
 }
+
+Vector2 px_to_tile(View &view, Grid &grid, Vector2 &in) {
+    // Transforme les coordonnées Ecran (px) vers coordonnées dans le repère de la grille.
+    // Peut-être out of bounds sans problème.
+    View_Matrix m = Maths::mat_scr_to_w(view.origin, view.theta, view.pix_per_m,
+                                        view.buffer->width, view.buffer->height);
+    Vector2 real{Maths::transformed(in, m)};
+    real += grid.origin;
+    return {real.x / grid.tile_size, real.y / grid.tile_size};
+}
+
+bool tile_clic(View &view, Grid &grid, Vector2 &in) {
+    // Allume la case cliquée (prend les coordonnées pixel brutes de l'écran) si la case est valide.
+    // Ne fait rien sinon. Renvoie true si succès, false si échec.
+    Vector2 px{px_to_tile(view, grid, in)};
+    if (px.x < 0 || px.x > grid.w || px.y < 0 || px.y > grid.h) {
+        return false;
+    }
+    grid.set(static_cast<int>(px.x), static_cast<int>(px.y), 1);
+    return true;
+}
+
+// TODO: Gestion des inputs. Utilisation finale dans le main: gestiondesinputs(&inputs, view, grid)
+// et tout doit être géré. (mouvements, allumer/éteindre)
