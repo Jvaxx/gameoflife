@@ -22,7 +22,7 @@ static SDL_Window *game_window = std::nullptr_t();
 static SDL_Renderer *game_renderer = std::nullptr_t();
 static Pixel_buffer *main_buffer = new Pixel_buffer{};
 static View *game_view = new View{main_buffer};
-static Grid *game_grid = new Grid(15, 15);
+static Grid *game_grid = new Grid(500, 500);
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -36,11 +36,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         std::cerr << "Init renderer en échec.\n";
         return SDL_APP_FAILURE;
     }
-    // SDL_SetRenderLogicalPresentation(game_renderer,
-    //                                  1440, 810,
-    //                                  SDL_LOGICAL_PRESENTATION_LETTERBOX);
     Game_state *state = new Game_state{};
     state->last_tick = SDL_GetTicks();
+    state->last_frame = SDL_GetTicks();
     *appstate = state;
     main_buffer->resize(game_renderer, 1440, 810);
     game_view->origin.x = 0;
@@ -51,32 +49,32 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     game_grid->origin.y = 0;
     game_grid->tile_size = 1;
 
-    game_grid->set(1, 10, 1);
-    game_grid->set(2, 9, 1);
-    game_grid->set(2, 8, 1);
-    game_grid->set(1, 8, 1);
-    game_grid->set(0, 8, 1);
-
     std::cout << "App initilisée.\n";
     return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
     Game_state *state = static_cast<Game_state *>(appstate);
-    uint64_t tick{SDL_GetTicks()};
-    process_input(state->input, *game_view, *game_grid);
-    if (tick - state->last_tick > 100) {
+    uint64_t start_time{SDL_GetTicks()};
+    if (start_time - state->last_tick > state->mspt) {
+        if (state->playing) {
+            update_grid(*game_grid);
+        }
+        state->last_tick += state->mspt;
+    }
+    if (start_time - state->last_frame > 16.66) {
+        process_input(state, *game_view, *game_grid);
         main_buffer->clear_pixel(0xFFFF00FF);
         fill_grid(game_view, game_grid, game_renderer);
         draw_grid(game_view, game_grid, game_renderer);
-        update_grid(*game_grid);
         main_buffer->update(game_renderer);
-        state->last_tick += 100;
+        state->last_frame += 16.66;
     }
     return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
+    // BUG: 2 bouttons appuyés en même temps posent pb.
     Game_state *state = reinterpret_cast<Game_state *>(appstate);
     switch (event->type) {
     case SDL_EVENT_MOUSE_BUTTON_UP:
@@ -129,6 +127,16 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         case SDL_SCANCODE_L:
             state->input.mv_r.press = (event->key.down) ? 1 : state->input.mv_r.press;
             break;
+        case SDL_SCANCODE_SPACE:
+            state->input.pause.press = (event->key.down) ? 1 : state->input.pause.press;
+            break;
+        case SDL_SCANCODE_O:
+            state->input.slow_down.press = (event->key.down) ? 1 : state->input.slow_down.press;
+            break;
+        case SDL_SCANCODE_P:
+            state->input.speed_up.press = (event->key.down) ? 1 : state->input.speed_up.press;
+            break;
+
         default:
             break;
         }

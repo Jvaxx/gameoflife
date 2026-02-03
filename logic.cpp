@@ -139,62 +139,79 @@ bool tile_clic(View &view, Grid &grid, Vector2 in, int value) {
     return true;
 }
 
-void process_input(Game_input &input, View &view, Grid &grid) {
+void process_input(Game_state *state, View &view, Grid &grid) {
     // TODO: Améliorer ça?
     const float MOVE_UNIT{0.2f};                   // Constante temporaire, à voir plus tard.
     const float ZOOM_UNIT{0.05f * view.pix_per_m}; // Constante temporaire, à voir plus tard.
     const float ROT_UNIT{0.02f};                   // Constante temporaire, à voir plus tard.
-    if (input.mv_l.press) {
+    const float MSPT_MULT{0.1f};                   // Constante temporaire, à voir plus tard.
+    if (state->input.mv_l.press) {
         // move left
         view.origin += Maths::transformed({-MOVE_UNIT, 0},
                                           {std::cos(view.theta), -std::sin(view.theta), 0,
                                            std::sin(view.theta), std::cos(view.theta), 0});
-        input.mv_l.press = 0;
+        state->input.mv_l.press = 0;
     }
-    if (input.mv_r.press) {
+    if (state->input.mv_r.press) {
         // move left
         view.origin += Maths::transformed({+MOVE_UNIT, 0},
                                           {std::cos(view.theta), -std::sin(view.theta), 0,
                                            std::sin(view.theta), std::cos(view.theta), 0});
-        input.mv_r.press = 0;
+        state->input.mv_r.press = 0;
     }
-    if (input.mv_u.press) {
+    if (state->input.mv_u.press) {
         // move left
         view.origin += Maths::transformed({0, +MOVE_UNIT},
                                           {std::cos(view.theta), -std::sin(view.theta), 0,
                                            std::sin(view.theta), std::cos(view.theta), 0});
-        input.mv_u.press = 0;
+        state->input.mv_u.press = 0;
     }
-    if (input.mv_d.press) {
+    if (state->input.mv_d.press) {
         // move left
         view.origin += Maths::transformed({0, -MOVE_UNIT},
                                           {std::cos(view.theta), -std::sin(view.theta), 0,
                                            std::sin(view.theta), std::cos(view.theta), 0});
-        input.mv_d.press = 0;
+        state->input.mv_d.press = 0;
     }
-    if (input.wheel.scroll) {
+    if (state->input.wheel.scroll) {
         // zoom
-        view.pix_per_m += ZOOM_UNIT * input.wheel.scroll;
-        input.wheel.scroll = 0;
+        view.pix_per_m += ZOOM_UNIT * state->input.wheel.scroll;
+        state->input.wheel.scroll = 0;
     }
-    if (input.rot_pos.press) {
+    if (state->input.rot_pos.press) {
         // rotation positive du viewport
         view.theta += ROT_UNIT;
-        input.rot_pos.press = 0;
+        state->input.rot_pos.press = 0;
     }
-    if (input.rot_neg.press) {
+    if (state->input.rot_neg.press) {
         // rotation negative du viewport
         view.theta -= ROT_UNIT;
-        input.rot_neg.press = 0;
+        state->input.rot_neg.press = 0;
     }
-    if (input.mouse_l.press) {
+    if (state->input.mouse_l.press) {
         // allumer une case
-        tile_clic(view, grid, {input.mouse_l.x, input.mouse_l.y}, 1);
-        input.mouse_l.press = 0;
+        tile_clic(view, grid, {state->input.mouse_l.x, state->input.mouse_l.y}, 1);
+        state->input.mouse_l.press = 0;
     }
-    if (input.mouse_r.press) {
+    if (state->input.mouse_r.press) {
         // éteindre une case
-        tile_clic(view, grid, {input.mouse_r.x, input.mouse_r.y}, 0);
-        input.mouse_r.press = 0;
+        tile_clic(view, grid, {state->input.mouse_r.x, state->input.mouse_r.y}, 0);
+        state->input.mouse_r.press = 0;
+    }
+    if (state->input.pause.press) {
+        // pause la simulation
+        state->playing = !state->playing;
+        state->input.pause.press = 0;
+    }
+    if (state->input.speed_up.press) {
+        // accélérer la simulation
+        state->mspt -= state->mspt * MSPT_MULT;
+        std::cout << "mspt: " << state->mspt << '\n';
+        state->input.speed_up.press = 0;
+    }
+    if (state->input.slow_down.press) {
+        // ralentir la simulation
+        state->mspt += state->mspt * MSPT_MULT;
+        state->input.slow_down.press = 0;
     }
 }

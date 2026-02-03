@@ -29,10 +29,16 @@ struct Game_input {
     Key_input mv_r{};
     Key_input rot_pos{};
     Key_input rot_neg{};
+    Key_input pause{};
+    Key_input slow_down{};
+    Key_input speed_up{};
 };
 
 struct Game_state {
     uint64_t last_tick;
+    uint64_t last_frame;
+    float mspt{500};
+    bool playing{};
     Game_input input;
 };
 
@@ -124,6 +130,6 @@ Vector2 px_to_tile(View &view, Grid &grid, Vector2 &in);
 
 // NOTE: temp pour test, mais c'est des fonction internes
 bool tile_clic(View &view, Grid &grid, Vector2 &in);
-void process_input(Game_input &input, View &view, Grid &grid);
+void process_input(Game_state *state, View &view, Grid &grid);
 #define LOGIC_H
 #endif // !LOGIC_H
