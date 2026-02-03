@@ -4,7 +4,10 @@
 #include "maths.h"
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_init.h>
+#include <SDL3/SDL_keycode.h>
+#include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_render.h>
+#include <SDL3/SDL_scancode.h>
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
 #include <algorithm>
@@ -61,21 +64,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 SDL_AppResult SDL_AppIterate(void *appstate) {
     Game_state *state = static_cast<Game_state *>(appstate);
     uint64_t tick{SDL_GetTicks()};
-    if (state->input.left_button.is_pressed) {
-        std::cout << "    Reçu en " << state->input.left_button.x << ", " << state->input.left_button.y << '\n';
-        Vector2 origin{state->input.left_button.x, state->input.left_button.y};
-        tile_clic(*game_view, *game_grid, origin);
-        state->input.left_button.is_pressed = 0;
-    }
-    if (tick - state->last_tick > 500) {
-
+    process_input(state->input, *game_view, *game_grid);
+    if (tick - state->last_tick > 100) {
         main_buffer->clear_pixel(0xFFFF00FF);
         fill_grid(game_view, game_grid, game_renderer);
         draw_grid(game_view, game_grid, game_renderer);
         update_grid(*game_grid);
-        // game_view->origin.x -= 0.1f;
         main_buffer->update(game_renderer);
-        state->last_tick += 500;
+        state->last_tick += 100;
     }
     return SDL_APP_CONTINUE;
 }
@@ -84,14 +80,66 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     Game_state *state = reinterpret_cast<Game_state *>(appstate);
     switch (event->type) {
     case SDL_EVENT_MOUSE_BUTTON_UP:
-    case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        // std::cout << "Mouse pressed: " << ((event->button.button == SDL_BUTTON_LEFT) ? "OUI" : "NON") << " " << event->button.down
-        //           << " " << event->button.x << ", " << event->button.y << '\n';
-        if (event->button.button == SDL_BUTTON_LEFT) {
-            state->input.left_button.is_pressed = (event->button.down) ? 1 : state->input.left_button.is_pressed;
-            state->input.left_button.x = event->button.x;
-            state->input.left_button.y = event->button.y;
+    case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+        std::string button{"?"};
+        switch (event->button.button) {
+        case SDL_BUTTON_LEFT:
+            state->input.mouse_l.press = (event->button.down) ? 1 : state->input.mouse_l.press;
+            state->input.mouse_l.x = event->button.x;
+            state->input.mouse_l.y = event->button.y;
+            break;
+        case SDL_BUTTON_RIGHT:
+            state->input.mouse_r.press = (event->button.down) ? 1 : state->input.mouse_r.press;
+            state->input.mouse_r.x = event->button.x;
+            state->input.mouse_r.y = event->button.y;
+            break;
+        case SDL_BUTTON_MIDDLE:
+            break;
+        case SDL_BUTTON_X1:
+            break;
+        case SDL_BUTTON_X2:
+            break;
+        default:
+            break;
         }
+        break;
+    }
+
+    case SDL_EVENT_KEY_DOWN:
+    case SDL_EVENT_KEY_UP: {
+        switch (event->key.scancode) {
+        case SDL_SCANCODE_H:
+            state->input.mv_l.press = (event->key.down) ? 1 : state->input.mv_l.press;
+            break;
+        case SDL_SCANCODE_J:
+            // NOTE: 4097 pour le modifieur shift, je n'arrive pas à faire fonctionner les flags SDL.
+            if (event->key.mod == 4097) {
+                state->input.rot_pos.press = (event->key.down) ? 1 : state->input.rot_pos.press;
+            } else {
+                state->input.mv_d.press = (event->key.down) ? 1 : state->input.mv_d.press;
+            }
+            break;
+        case SDL_SCANCODE_K:
+            if (event->key.mod == 4097) {
+                state->input.rot_neg.press = (event->key.down) ? 1 : state->input.rot_neg.press;
+            } else {
+                state->input.mv_u.press = (event->key.down) ? 1 : state->input.mv_u.press;
+            }
+            break;
+        case SDL_SCANCODE_L:
+            state->input.mv_r.press = (event->key.down) ? 1 : state->input.mv_r.press;
+            break;
+        default:
+            break;
+        }
+        // std::cout << "scancode:" << event->key.scancode << ", mod:" << event->key.mod
+        //           << ", down:" << event->key.down << ", repeat:" << event->key.repeat << '\n';
+        break;
+    }
+
+    case SDL_EVENT_MOUSE_WHEEL:
+        state->input.wheel.scroll = event->wheel.y;
+        // std::cout << "x:" << event->wheel.y << ", int_x:" << event->wheel.integer_x << ", int_y" << event->wheel.integer_y << "\n";
         break;
 
     case SDL_EVENT_WINDOW_RESIZED:

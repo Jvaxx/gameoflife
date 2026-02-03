@@ -8,8 +8,15 @@ struct Vector2 {
     float x{};
     float y{};
 
-    Vector2 operator+=(const Vector2 &in) {
-        return {x + in.x, y + in.y};
+    Vector2 &operator+=(const Vector2 &in) {
+        x += in.x;
+        y += in.y;
+        return *this;
+    }
+    Vector2 &operator-=(const Vector2 &in) {
+        x -= in.x;
+        y -= in.y;
+        return *this;
     }
 };
 

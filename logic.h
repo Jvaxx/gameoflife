@@ -5,16 +5,30 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
-struct Mouse_input {
-    bool is_pressed{};
+struct Mouse_button {
+    bool press{};
     float x;
     float y;
 };
 
+struct Key_input {
+    bool press{};
+};
+
+struct Mouse_wheel {
+    float scroll{};
+};
+
 struct Game_input {
-    // Gérer le clic etc
-    Mouse_input left_button{};
-    Mouse_input right_button{};
+    Mouse_button mouse_l{};
+    Mouse_button mouse_r{};
+    Mouse_wheel wheel{};
+    Key_input mv_u{};
+    Key_input mv_d{};
+    Key_input mv_l{};
+    Key_input mv_r{};
+    Key_input rot_pos{};
+    Key_input rot_neg{};
 };
 
 struct Game_state {
@@ -107,6 +121,9 @@ void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer);
 void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer);
 void update_grid(Grid &grid);
 Vector2 px_to_tile(View &view, Grid &grid, Vector2 &in);
+
+// NOTE: temp pour test, mais c'est des fonction internes
 bool tile_clic(View &view, Grid &grid, Vector2 &in);
+void process_input(Game_input &input, View &view, Grid &grid);
 #define LOGIC_H
 #endif // !LOGIC_H

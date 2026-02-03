@@ -3,6 +3,7 @@
 #include <cmath>
 bool get_bounding_box(View *view, Grid *grid, int *c_min, int *c_max, int *r_min, int *r_max) {
     // NOTE: Full heuristique, pas sûr des cas limite, et pas opti. (voir bounding box "AABB")
+    // BUG: Sur des angles proches de pi/2, problème de bounding box.
     float sqr = std::sqrt(std::pow(view->buffer->height, 2) + std::pow(view->buffer->width, 2)) / 2;
     float itan = std::atan2(view->buffer->height, view->buffer->width);
     float x_max = sqr * std::cos(-itan + std::remainder(view->theta, pi / 2)) + view->origin.x;
@@ -126,16 +127,74 @@ Vector2 px_to_tile(View &view, Grid &grid, Vector2 &in) {
     return {real.x / grid.tile_size, real.y / grid.tile_size};
 }
 
-bool tile_clic(View &view, Grid &grid, Vector2 &in) {
+bool tile_clic(View &view, Grid &grid, Vector2 in, int value) {
     // Allume la case cliquée (prend les coordonnées pixel brutes de l'écran) si la case est valide.
     // Ne fait rien sinon. Renvoie true si succès, false si échec.
     Vector2 px{px_to_tile(view, grid, in)};
     if (px.x < 0 || px.x > grid.w || px.y < 0 || px.y > grid.h) {
         return false;
     }
-    grid.set(static_cast<int>(px.x), static_cast<int>(px.y), 1);
+    // std::cout << "set avec value:" << value << " en (x,y):" << static_cast<int>(px.x) << ", " << static_cast<int>(px.y) << "\n";
+    grid.set(static_cast<int>(px.x), static_cast<int>(px.y), value);
     return true;
 }
 
-// TODO: Gestion des inputs. Utilisation finale dans le main: gestiondesinputs(&inputs, view, grid)
-// et tout doit être géré. (mouvements, allumer/éteindre)
+void process_input(Game_input &input, View &view, Grid &grid) {
+    // TODO: Améliorer ça?
+    const float MOVE_UNIT{0.2f};                   // Constante temporaire, à voir plus tard.
+    const float ZOOM_UNIT{0.05f * view.pix_per_m}; // Constante temporaire, à voir plus tard.
+    const float ROT_UNIT{0.02f};                   // Constante temporaire, à voir plus tard.
+    if (input.mv_l.press) {
+        // move left
+        view.origin += Maths::transformed({-MOVE_UNIT, 0},
+                                          {std::cos(view.theta), -std::sin(view.theta), 0,
+                                           std::sin(view.theta), std::cos(view.theta), 0});
+        input.mv_l.press = 0;
+    }
+    if (input.mv_r.press) {
+        // move left
+        view.origin += Maths::transformed({+MOVE_UNIT, 0},
+                                          {std::cos(view.theta), -std::sin(view.theta), 0,
+                                           std::sin(view.theta), std::cos(view.theta), 0});
+        input.mv_r.press = 0;
+    }
+    if (input.mv_u.press) {
+        // move left
+        view.origin += Maths::transformed({0, +MOVE_UNIT},
+                                          {std::cos(view.theta), -std::sin(view.theta), 0,
+                                           std::sin(view.theta), std::cos(view.theta), 0});
+        input.mv_u.press = 0;
+    }
+    if (input.mv_d.press) {
+        // move left
+        view.origin += Maths::transformed({0, -MOVE_UNIT},
+                                          {std::cos(view.theta), -std::sin(view.theta), 0,
+                                           std::sin(view.theta), std::cos(view.theta), 0});
+        input.mv_d.press = 0;
+    }
+    if (input.wheel.scroll) {
+        // zoom
+        view.pix_per_m += ZOOM_UNIT * input.wheel.scroll;
+        input.wheel.scroll = 0;
+    }
+    if (input.rot_pos.press) {
+        // rotation positive du viewport
+        view.theta += ROT_UNIT;
+        input.rot_pos.press = 0;
+    }
+    if (input.rot_neg.press) {
+        // rotation negative du viewport
+        view.theta -= ROT_UNIT;
+        input.rot_neg.press = 0;
+    }
+    if (input.mouse_l.press) {
+        // allumer une case
+        tile_clic(view, grid, {input.mouse_l.x, input.mouse_l.y}, 1);
+        input.mouse_l.press = 0;
+    }
+    if (input.mouse_r.press) {
+        // éteindre une case
+        tile_clic(view, grid, {input.mouse_r.x, input.mouse_r.y}, 0);
+        input.mouse_r.press = 0;
+    }
+}
