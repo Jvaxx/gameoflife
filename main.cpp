@@ -1,5 +1,4 @@
 #include "main.h"
-#include "graphics.h"
 #include "logic.h"
 #include "maths.h"
 #include <SDL3/SDL_events.h>
@@ -10,11 +9,8 @@
 #include <SDL3/SDL_scancode.h>
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
-#include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <iostream>
-#include <vector>
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL_main.h>
 
@@ -39,15 +35,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     Game_state *state = new Game_state{};
     state->last_tick = SDL_GetTicks();
     state->last_frame = SDL_GetTicks();
+    state->last_log = SDL_GetTicks();
+    state->last_input_proc = SDL_GetTicks();
     *appstate = state;
     main_buffer->resize(game_renderer, 1440, 810);
-    game_view->origin.x = 0;
-    game_view->origin.y = 0;
-    game_view->pix_per_m = 20;
-    game_view->theta = 0.2;
-    game_grid->origin.x = 0;
-    game_grid->origin.y = 0;
-    game_grid->tile_size = 1;
+    game_view->pix_per_m = 1.35;
+    game_view->theta = 0.15;
+    game_view->origin = {250, 250};
 
     std::cout << "App initilisée.\n";
     return SDL_APP_CONTINUE;
@@ -56,25 +50,74 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 SDL_AppResult SDL_AppIterate(void *appstate) {
     Game_state *state = static_cast<Game_state *>(appstate);
     uint64_t start_time{SDL_GetTicks()};
+
+    // Process input: max speed
+    process_input(state, *game_view, *game_grid);
+
+    // Update grid: target speed: state.mspt
     if (start_time - state->last_tick > state->mspt) {
+        uint64_t start_process_time{SDL_GetTicks()};
         if (state->playing) {
             update_grid(*game_grid);
         }
         state->last_tick += state->mspt;
+        state->process_time += SDL_GetTicks() - start_process_time;
+        ++state->ticks_since_log;
     }
-    if (start_time - state->last_frame > 16.66) {
-        process_input(state, *game_view, *game_grid);
+
+    // Render screen: target speed: 50 MSPRender
+    if (start_time - state->last_frame > 100) {
+        uint64_t start_render_time{SDL_GetTicks()};
         main_buffer->clear_pixel(0xFFFF00FF);
-        fill_grid(game_view, game_grid, game_renderer);
+        state->clr_px_time += SDL_GetTicks() - start_render_time;
+
+        uint64_t start_fill_time{SDL_GetTicks()};
+        fill_grid2(game_view, game_grid, game_renderer, state);
+        state->draw_tiles_time += SDL_GetTicks() - start_fill_time;
+
+        uint64_t start_grid_time{SDL_GetTicks()};
         draw_grid(game_view, game_grid, game_renderer);
+        state->draw_grid_time += SDL_GetTicks() - start_grid_time;
+
+        uint64_t start_updt_buff{SDL_GetTicks()};
         main_buffer->update(game_renderer);
-        state->last_frame += 16.66;
+        state->buff_updt_time += SDL_GetTicks() - start_updt_buff;
+
+        state->last_frame += 100;
+        state->frame_time += SDL_GetTicks() - start_render_time;
+        ++state->frames_since_log;
+    }
+
+    // Log stats: target speed: 2000 MSPLog
+    if (start_time - state->last_log > 2000) {
+        // std::cout << "[STATS] AVG Effective TPS: " << state->ticks_since_log / 2.000f << '\n';
+        std::cout << "[STATS] AVG MSPT: " << static_cast<float>(state->process_time) / state->ticks_since_log << '\n';
+        std::cout << "[STATS] AVG MSPF: " << static_cast<float>(state->frame_time) / state->frames_since_log << '\n';
+        // std::cout << "[STATS] AVG MSPDrawGrid: " << static_cast<float>(state->draw_grid_time) / state->frames_since_log << '\n';
+        std::cout << "[STATS] AVG MSPDrawTiles: " << static_cast<float>(state->draw_tiles_time) / state->frames_since_log << '\n';
+        // std::cout << "[STATS] AVG MSPDrawTilesInternal: " << static_cast<float>(state->draw_tiles_time_internal) / state->frames_since_log << '\n';
+        // std::cout << "[STATS] AVG MSPDrawPoly (x10K): " << 10000 * static_cast<float>(state->draw_poly_time) / state->draw_poly_since_log << '\n';
+        // std::cout << "[STATS] AVG MSPClrPx: " << static_cast<float>(state->clr_px_time) / state->frames_since_log << '\n';
+        // std::cout << "[STATS] AVG MSPBuffUpdt: " << static_cast<float>(state->buff_updt_time) / state->frames_since_log << '\n';
+        std::cout << state->draw_poly_since_log << '\n';
+        std::cout << '\n';
+        state->ticks_since_log = 0;
+        state->frames_since_log = 0;
+        state->draw_poly_since_log = 0;
+        state->process_time = 0;
+        state->frame_time = 0;
+        state->draw_grid_time = 0;
+        state->draw_tiles_time = 0;
+        state->draw_tiles_time_internal = 0;
+        state->draw_poly_time = 0;
+        state->clr_px_time = 0;
+        state->buff_updt_time = 0;
+        state->last_log = SDL_GetTicks();
     }
     return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
-    // BUG: 2 bouttons appuyés en même temps posent pb.
     Game_state *state = reinterpret_cast<Game_state *>(appstate);
     switch (event->type) {
     case SDL_EVENT_MOUSE_BUTTON_UP:
@@ -82,12 +125,12 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         std::string button{"?"};
         switch (event->button.button) {
         case SDL_BUTTON_LEFT:
-            state->input.mouse_l.press = (event->button.down) ? 1 : state->input.mouse_l.press;
+            state->input.mouse_l.press = (event->button.down);
             state->input.mouse_l.x = event->button.x;
             state->input.mouse_l.y = event->button.y;
             break;
         case SDL_BUTTON_RIGHT:
-            state->input.mouse_r.press = (event->button.down) ? 1 : state->input.mouse_r.press;
+            state->input.mouse_r.press = (event->button.down);
             state->input.mouse_r.x = event->button.x;
             state->input.mouse_r.y = event->button.y;
             break;
@@ -107,25 +150,25 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     case SDL_EVENT_KEY_UP: {
         switch (event->key.scancode) {
         case SDL_SCANCODE_H:
-            state->input.mv_l.press = (event->key.down) ? 1 : state->input.mv_l.press;
+            state->input.mv_l.press = (event->key.down);
             break;
         case SDL_SCANCODE_J:
             // NOTE: 4097 pour le modifieur shift, je n'arrive pas à faire fonctionner les flags SDL.
             if (event->key.mod == 4097) {
-                state->input.rot_pos.press = (event->key.down) ? 1 : state->input.rot_pos.press;
+                state->input.rot_pos.press = (event->key.down);
             } else {
-                state->input.mv_d.press = (event->key.down) ? 1 : state->input.mv_d.press;
+                state->input.mv_d.press = (event->key.down);
             }
             break;
         case SDL_SCANCODE_K:
             if (event->key.mod == 4097) {
-                state->input.rot_neg.press = (event->key.down) ? 1 : state->input.rot_neg.press;
+                state->input.rot_neg.press = (event->key.down);
             } else {
-                state->input.mv_u.press = (event->key.down) ? 1 : state->input.mv_u.press;
+                state->input.mv_u.press = (event->key.down);
             }
             break;
         case SDL_SCANCODE_L:
-            state->input.mv_r.press = (event->key.down) ? 1 : state->input.mv_r.press;
+            state->input.mv_r.press = (event->key.down);
             break;
         case SDL_SCANCODE_SPACE:
             state->input.pause.press = (event->key.down) ? 1 : state->input.pause.press;
@@ -140,8 +183,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         default:
             break;
         }
-        // std::cout << "scancode:" << event->key.scancode << ", mod:" << event->key.mod
-        //           << ", down:" << event->key.down << ", repeat:" << event->key.repeat << '\n';
         break;
     }
 

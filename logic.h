@@ -37,6 +37,19 @@ struct Game_input {
 struct Game_state {
     uint64_t last_tick;
     uint64_t last_frame;
+    uint64_t last_input_proc;
+    uint64_t process_time{0};
+    uint64_t frames_since_log{0};
+    uint64_t frame_time{0};
+    uint64_t draw_grid_time{0};
+    uint64_t draw_tiles_time{0};
+    uint64_t draw_tiles_time_internal{0};
+    uint64_t draw_poly_time{0};
+    uint64_t draw_poly_since_log{0};
+    uint64_t clr_px_time{0};
+    uint64_t buff_updt_time{0};
+    uint64_t ticks_since_log{0};
+    uint64_t last_log;
     float mspt{500};
     bool playing{};
     Game_input input;
@@ -123,7 +136,8 @@ struct View {
     Vector2 origin{0, 0}; // Le milieu du view-port, en mètres
 };
 
-void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer);
+void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state);
+void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state);
 void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer);
 void update_grid(Grid &grid);
 Vector2 px_to_tile(View &view, Grid &grid, Vector2 &in);

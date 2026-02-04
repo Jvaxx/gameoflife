@@ -1,6 +1,9 @@
 #include "logic.h"
 #include "graphics.h"
+#include <SDL3/SDL_timer.h>
 #include <cmath>
+#include <cstdint>
+#include <vector>
 bool get_bounding_box(View *view, Grid *grid, int *c_min, int *c_max, int *r_min, int *r_max) {
     // NOTE: Full heuristique, pas sûr des cas limite, et pas opti. (voir bounding box "AABB")
     // BUG: Sur des angles proches de pi/2, problème de bounding box.
@@ -27,7 +30,8 @@ bool get_bounding_box(View *view, Grid *grid, int *c_min, int *c_max, int *r_min
     return true;
 }
 
-void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
+void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state) {
+    uint64_t fill_start_time{SDL_GetTicks()};
     // calcul des limites d'affichage (en coordonnées réelles)
     int col_min, raw_min, col_max, raw_max;
     if (!get_bounding_box(view, grid, &col_min, &col_max, &raw_min, &raw_max))
@@ -49,12 +53,84 @@ void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
 
             tile = Maths::transformed(tile, m3);
             if (grid->get(X, Y)) {
+                uint64_t start_draw_poly{SDL_GetTicks()};
                 Graphics::draw_polygon(view->buffer, tile, 0xFF0000FF);
+                state->draw_poly_time += SDL_GetTicks() - start_draw_poly;
             } else {
+                uint64_t start_draw_poly{SDL_GetTicks()};
                 Graphics::draw_polygon(view->buffer, tile, 0xFFFFFFFF);
+                state->draw_poly_time += SDL_GetTicks() - start_draw_poly;
+            }
+            ++state->draw_poly_since_log;
+        }
+    }
+    state->draw_tiles_time_internal += SDL_GetTicks() - fill_start_time;
+}
+
+void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state) {
+    // NOTE: Itère ligne par ligne pour draw plusieurs tiles à la fois quand possible pour
+    // réduire le nombre d'appel à draw_polygon
+    uint64_t fill_start_time{SDL_GetTicks()};
+
+    // calcul des limites d'affichage (en coordonnées réelles)
+    int col_min, raw_min, col_max, raw_max;
+    if (!get_bounding_box(view, grid, &col_min, &col_max, &raw_min, &raw_max))
+        return; // complètement en dehors de l'écran
+
+    const View_Matrix m3 = Maths::mat_w_to_scr(view->origin, view->theta,
+                                               view->pix_per_m,
+                                               view->buffer->width,
+                                               view->buffer->height);
+
+    // préalloc
+
+    for (int Y{raw_min}; Y < raw_max; ++Y) {
+        int Xtmp{col_min}; // Le dernier X suivant une case allumée
+        for (int X{col_min}; X < col_max; ++X) {
+            if (grid->get(X, Y)) {
+                // Draw case allumée
+                std::vector<Vector2> tile{
+                    {X * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
+                    {(X + 1) * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
+                    {(X + 1) * grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
+                    {X * grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
+                };
+                tile = Maths::transformed(tile, m3);
+                uint64_t start_draw_poly{SDL_GetTicks()};
+                Graphics::draw_polygon(view->buffer, tile, 0xFF0000FF);
+                state->draw_poly_time += SDL_GetTicks() - start_draw_poly;
+
+                // Draw rectangle vide précédant la case allumée
+                std::vector<Vector2> line{
+                    {Xtmp * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
+                    {(X)*grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
+                    {(X)*grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
+                    {Xtmp * grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
+                };
+                line = Maths::transformed(line, m3);
+                start_draw_poly = SDL_GetTicks();
+                Graphics::draw_polygon(view->buffer, line, 0xFFFFFFFF);
+                state->draw_poly_time += SDL_GetTicks() - start_draw_poly;
+                state->draw_poly_since_log += 2;
+                Xtmp = X + 1;
+            } else if (X >= col_max - 1) {
+                // On est dans la dernière col et case vide, il faut dessiner quand même.
+                // Draw rectangle vide
+                std::vector<Vector2> line{
+                    {Xtmp * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
+                    {(X + 1) * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
+                    {(X + 1) * grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
+                    {Xtmp * grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
+                };
+                line = Maths::transformed(line, m3);
+                uint64_t start_draw_poly = SDL_GetTicks();
+                Graphics::draw_polygon(view->buffer, line, 0xFFFFFFFF);
+                state->draw_poly_time += SDL_GetTicks() - start_draw_poly;
+                state->draw_poly_since_log += 1;
             }
         }
     }
+    state->draw_tiles_time_internal += SDL_GetTicks() - fill_start_time;
 }
 
 void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
@@ -140,78 +216,94 @@ bool tile_clic(View &view, Grid &grid, Vector2 in, int value) {
 }
 
 void process_input(Game_state *state, View &view, Grid &grid) {
+    // std::cout << "    Processing input\n";
+    uint64_t start_time = SDL_GetTicks();
+    bool input_processed{false};
     // TODO: Améliorer ça?
-    const float MOVE_UNIT{0.2f};                   // Constante temporaire, à voir plus tard.
-    const float ZOOM_UNIT{0.05f * view.pix_per_m}; // Constante temporaire, à voir plus tard.
-    const float ROT_UNIT{0.02f};                   // Constante temporaire, à voir plus tard.
+    float dt = SDL_GetTicks() - state->last_input_proc;
+    const float MOVE_UNIT{0.02f * dt};             // Constante temporaire, à voir plus tard.
+    const float ZOOM_UNIT{0.10f * view.pix_per_m}; // Constante temporaire, à voir plus tard.
+    const float ROT_UNIT{0.002f * dt};             // Constante temporaire, à voir plus tard.
     const float MSPT_MULT{0.1f};                   // Constante temporaire, à voir plus tard.
     if (state->input.mv_l.press) {
         // move left
         view.origin += Maths::transformed({-MOVE_UNIT, 0},
                                           {std::cos(view.theta), -std::sin(view.theta), 0,
                                            std::sin(view.theta), std::cos(view.theta), 0});
-        state->input.mv_l.press = 0;
+        input_processed = true;
     }
     if (state->input.mv_r.press) {
         // move left
         view.origin += Maths::transformed({+MOVE_UNIT, 0},
                                           {std::cos(view.theta), -std::sin(view.theta), 0,
                                            std::sin(view.theta), std::cos(view.theta), 0});
-        state->input.mv_r.press = 0;
+        input_processed = true;
     }
     if (state->input.mv_u.press) {
         // move left
         view.origin += Maths::transformed({0, +MOVE_UNIT},
                                           {std::cos(view.theta), -std::sin(view.theta), 0,
                                            std::sin(view.theta), std::cos(view.theta), 0});
-        state->input.mv_u.press = 0;
+        input_processed = true;
     }
     if (state->input.mv_d.press) {
         // move left
         view.origin += Maths::transformed({0, -MOVE_UNIT},
                                           {std::cos(view.theta), -std::sin(view.theta), 0,
                                            std::sin(view.theta), std::cos(view.theta), 0});
-        state->input.mv_d.press = 0;
+        input_processed = true;
     }
     if (state->input.wheel.scroll) {
         // zoom
         view.pix_per_m += ZOOM_UNIT * state->input.wheel.scroll;
         state->input.wheel.scroll = 0;
+        input_processed = true;
     }
     if (state->input.rot_pos.press) {
         // rotation positive du viewport
         view.theta += ROT_UNIT;
-        state->input.rot_pos.press = 0;
+        input_processed = true;
     }
     if (state->input.rot_neg.press) {
         // rotation negative du viewport
         view.theta -= ROT_UNIT;
-        state->input.rot_neg.press = 0;
+        input_processed = true;
     }
     if (state->input.mouse_l.press) {
         // allumer une case
         tile_clic(view, grid, {state->input.mouse_l.x, state->input.mouse_l.y}, 1);
-        state->input.mouse_l.press = 0;
+        input_processed = true;
     }
     if (state->input.mouse_r.press) {
         // éteindre une case
         tile_clic(view, grid, {state->input.mouse_r.x, state->input.mouse_r.y}, 0);
-        state->input.mouse_r.press = 0;
+        input_processed = true;
     }
     if (state->input.pause.press) {
         // pause la simulation
         state->playing = !state->playing;
         state->input.pause.press = 0;
+        input_processed = true;
     }
     if (state->input.speed_up.press) {
         // accélérer la simulation
         state->mspt -= state->mspt * MSPT_MULT;
-        std::cout << "mspt: " << state->mspt << '\n';
         state->input.speed_up.press = 0;
+        std::cout << "[tick/s]: " << 1000 / state->mspt << '\n';
+        input_processed = true;
     }
     if (state->input.slow_down.press) {
         // ralentir la simulation
         state->mspt += state->mspt * MSPT_MULT;
         state->input.slow_down.press = 0;
+        std::cout << "[tick/s]: " << 1000 / state->mspt << '\n';
+        input_processed = true;
     }
+
+    // Perf log
+    if (input_processed && (SDL_GetTicks() - start_time) > 1) {
+        std::cout << "[WARNING] Long input process time: " << start_time - SDL_GetTicks() << " ms\n";
+    }
+
+    state->last_input_proc = SDL_GetTicks();
 }

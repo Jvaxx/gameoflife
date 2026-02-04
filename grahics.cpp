@@ -56,24 +56,18 @@ void draw_polygon(Pixel_buffer *buffer, const std::vector<Vector2> &pts, uint32_
     if (pts.empty())
         return;
 
-    // Tableau des arêtes
-    int min_y = pts[0].y;
-    int max_y = pts[0].y;
-    int min_x = pts[0].x;
-    int max_x = pts[0].x;
+    int min_y = pts[0].y, max_y = pts[0].y;
+    int min_x = pts[0].x, max_x = pts[0].x;
     for (const auto &p : pts) {
-        if (p.y < min_y)
-            min_y = p.y;
-        if (p.y > max_y)
-            max_y = p.y;
-        if (p.x < min_x)
-            min_x = p.x;
-        if (p.x > max_x)
-            max_x = p.x;
+        min_y = std::min(min_y, static_cast<int>(p.y));
+        max_y = std::max(max_y, static_cast<int>(p.y));
+        min_x = std::min(min_x, static_cast<int>(p.x));
+        max_x = std::max(max_x, static_cast<int>(p.x));
     }
     if (max_y < 0 || min_y >= buffer->height || max_x < 0 || min_x >= buffer->width)
         return;
 
+    // Tableau des arêtes
     std::vector<std::vector<Edge>> edges_starting_at(max_y - min_y + 1);
     for (size_t i{}; i < pts.size(); ++i) {
         Vector2 p1 = pts[i];
@@ -93,40 +87,41 @@ void draw_polygon(Pixel_buffer *buffer, const std::vector<Vector2> &pts, uint32_
     }
 
     std::vector<Edge> active_edges;
+    active_edges.reserve(pts.size());
     // scanline
     for (int y = min_y; y < max_y; ++y) {
-        if (y - min_y < edges_starting_at.size()) {
-            auto &new_edges = edges_starting_at[y - min_y];
-            active_edges.insert(active_edges.end(), new_edges.begin(), new_edges.end());
+        auto &new_edges = edges_starting_at[y - min_y];
+        for (auto &e : new_edges) {
+            auto pos = std::lower_bound(active_edges.begin(), active_edges.end(), e);
+            active_edges.insert(pos, e);
         }
 
-        // NOTE: Implémenter Maths::remove_if?
-        active_edges.erase(
-            std::remove_if(active_edges.begin(), active_edges.end(),
-                           [y](const Edge &e) { return y >= e.y_max; }),
-            active_edges.end());
+        size_t write_idx = 0;
+        for (size_t read_idx = 0; read_idx < active_edges.size(); ++read_idx) {
+            if (active_edges[read_idx].y_max > y) {
+                active_edges[write_idx++] = active_edges[read_idx];
+            }
+        }
+        active_edges.resize(write_idx);
 
-        // NOTE: Implémenter Maths::merge_sort pour tous les types?
-        std::sort(active_edges.begin(), active_edges.end());
+        // Tri par insertion (plus rapide pour données presque triées)
+        for (size_t i = 1; i < active_edges.size(); ++i) {
+            Edge key = active_edges[i];
+            int j = i - 1;
+            while (j >= 0 && active_edges[j].x > key.x) {
+                active_edges[j + 1] = active_edges[j];
+                --j;
+            }
+            active_edges[j + 1] = key;
+        }
 
         if (y >= 0 && y < buffer->height) {
             uint32_t *pixel_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y * buffer->width;
-            for (size_t i = 0; i < active_edges.size(); i += 2) {
-                if (i + 1 >= active_edges.size())
-                    break; // si immpartié (probablement impossible?)
+            for (size_t i = 0; i + 1 < active_edges.size(); i += 2) {
+                int x_start = std::max(0, static_cast<int>(std::ceil(active_edges[i].x)));
+                int x_end = std::min(buffer->width, static_cast<int>(std::ceil(active_edges[i + 1].x)));
 
-                // TODO: Implémenter Maths::ceil
-                int x_start = static_cast<int>(std::ceil(active_edges[i].x));
-                int x_end = static_cast<int>(std::ceil(active_edges[i + 1].x));
-
-                if (x_end >= buffer->width)
-                    x_end = buffer->width;
-                if (x_start < 0)
-                    x_start = 0;
-
-                for (int x = x_start; x < x_end; ++x) {
-                    pixel_ptr[x] = color;
-                }
+                std::fill_n(pixel_ptr + x_start, x_end - x_start, color);
             }
         }
 
