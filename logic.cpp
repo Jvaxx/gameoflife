@@ -3,6 +3,7 @@
 #include <SDL3/SDL_timer.h>
 #include <cmath>
 #include <cstdint>
+#include <random>
 #include <vector>
 bool get_bounding_box(View *view, Grid *grid, int *c_min, int *c_max, int *r_min, int *r_max) {
     // NOTE: Full heuristique, pas sûr des cas limite, et pas opti. (voir bounding box "AABB")
@@ -32,6 +33,7 @@ bool get_bounding_box(View *view, Grid *grid, int *c_min, int *c_max, int *r_min
 }
 
 void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state) {
+    // NOTE: Claqué au sol. Voir fill_grid2.
     uint64_t fill_start_time{SDL_GetTicks()};
     // calcul des limites d'affichage (en coordonnées réelles)
     int col_min, raw_min, col_max, raw_max;
@@ -69,9 +71,8 @@ void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state
 }
 
 void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state) {
-    // NOTE: Itère ligne par ligne pour draw plusieurs tiles à la fois quand possible pour
+    // Itère ligne par ligne pour draw plusieurs tiles à la fois quand possible pour
     // réduire le nombre d'appel à draw_polygon
-    uint64_t fill_start_time{SDL_GetTicks()};
 
     // calcul des limites d'affichage (en coordonnées réelles)
     int col_min, raw_min, col_max, raw_max;
@@ -82,6 +83,10 @@ void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *stat
                                                view->pix_per_m,
                                                view->buffer->width,
                                                view->buffer->height);
+    Vector2 dx_screen{
+        grid->tile_size * m3.m00,
+        grid->tile_size * m3.m10};
+
     // clear le fond pour éviter de déssiner les tuiles vides
     std::vector<Vector2> background{
         {col_min * grid->tile_size + grid->origin.x, raw_min * grid->tile_size + grid->origin.y},
@@ -90,49 +95,44 @@ void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *stat
         {col_min * grid->tile_size + grid->origin.x, raw_max * grid->tile_size + grid->origin.y},
     };
     background = Maths::transformed(background, m3);
-    // uint64_t start_draw_poly{SDL_GetPerformanceCounter()};
     Graphics::draw_polygon(view->buffer, background, 0xFFFFFFFF);
-    // state->draw_poly_time += SDL_GetPerformanceCounter() - start_draw_poly;
     state->draw_poly_since_log += 1;
 
+    std::array<Vector2, 4> poly_buffer;
     for (int Y{raw_min}; Y < raw_max; ++Y) {
+        Vector2 row_p00(col_min * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y);
+        Vector2 row_p01(col_min * grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y);
+        row_p00 = Maths::transformed(row_p00, m3);
+        row_p01 = Maths::transformed(row_p01, m3);
         int Xtmp{col_min};
-        for (int X{col_min}; X < col_max; ++X) {
-            if (grid->get(X, Y)) {
-                if (X == col_max - 1) {
-                    // On est dans la dernière col, et la case est allumée
-                    std::vector<Vector2> tile{
-                        {X * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
-                        {(X + 1) * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
-                        {(X + 1) * grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
-                        {X * grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
-                    };
-                    tile = Maths::transformed(tile, m3);
-                    // uint64_t start_draw_poly{SDL_GetPerformanceCounter()};
-                    Graphics::draw_polygon(view->buffer, tile, 0xFF0000FF);
-                    // state->draw_poly_time += SDL_GetPerformanceCounter() - start_draw_poly;
-                    state->draw_poly_since_log += 1;
-                }
-            } else {
-                // Case éteinte, on dessine les grilles allumées précédentes
-                if (Xtmp < X) {
-                    std::vector<Vector2> tile{
-                        {Xtmp * grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
-                        {(X)*grid->tile_size + grid->origin.x, Y * grid->tile_size + grid->origin.y},
-                        {(X)*grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
-                        {Xtmp * grid->tile_size + grid->origin.x, (Y + 1) * grid->tile_size + grid->origin.y},
-                    };
-                    tile = Maths::transformed(tile, m3);
-                    // uint64_t start_draw_poly{SDL_GetPerformanceCounter()};
-                    Graphics::draw_polygon(view->buffer, tile, 0xFF0000FF);
-                    // state->draw_poly_time += SDL_GetPerformanceCounter() - start_draw_poly;
-                    state->draw_poly_since_log += 1;
-                }
-                Xtmp = X + 1;
+        // NOTE: Amélioration possible: accéder à la grille par pointeur direct
+        while (Xtmp < col_max) {
+            while (Xtmp < col_max && !grid->get(Xtmp, Y)) {
+                ++Xtmp;
             }
+            if (Xtmp >= col_max)
+                break;
+
+            // On est sur une case allumée, on cherche sa fin
+            int start_X{Xtmp};
+            while (Xtmp < col_max && grid->get(Xtmp, Y)) {
+                Xtmp++;
+            }
+            int end_X{Xtmp};
+
+            float start = static_cast<float>(start_X - col_min);
+            float end = static_cast<float>(end_X - col_min);
+            poly_buffer[0] = row_p00 + start * dx_screen;
+            poly_buffer[1] = row_p00 + end * dx_screen;
+            poly_buffer[2] = row_p01 + end * dx_screen;
+            poly_buffer[3] = row_p01 + start * dx_screen;
+            uint64_t time_start = SDL_GetPerformanceCounter();
+            Graphics::draw_polygon(view->buffer, poly_buffer, 0xFF0000FF);
+            state->draw_tiles_time_internal += SDL_GetPerformanceCounter() - time_start;
+            state->draw_tiles_count_internal++;
+            state->draw_poly_since_log += 1;
         }
     }
-    state->draw_tiles_time_internal += SDL_GetTicks() - fill_start_time;
 }
 
 void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
@@ -308,4 +308,17 @@ void process_input(Game_state *state, View &view, Grid &grid) {
     }
 
     state->last_input_proc = SDL_GetTicks();
+}
+
+void randomize_grid(Grid &grid, float proba) {
+    // Rempli une grille tel que chaque case ait un proba "proba" comprise entre 0 et 1 d'être vivante.
+    std::mt19937 mt(42);
+    std::uniform_real_distribution alive{0.0f, 1.0f};
+    for (int X{}; X < grid.w; ++X) {
+        for (int Y{}; Y < grid.h; ++Y) {
+            if (alive(mt) < proba) {
+                grid.set(X, Y, 1);
+            }
+        }
+    }
 }

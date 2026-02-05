@@ -8,6 +8,7 @@
 #include <iostream>
 #include <memory>
 #include <ostream>
+#include <span>
 #include <utility>
 #include <vector>
 namespace Graphics {
@@ -52,7 +53,9 @@ struct Edge {
     }
 };
 
-void draw_polygon(Pixel_buffer *buffer, const std::vector<Vector2> &pts, uint32_t color) {
+void draw_polygon(Pixel_buffer *buffer, const std::span<Vector2> &pts, uint32_t color) {
+    // WARNING: C'est le goulot d'étranglement pour le rendu. Pour des polygones convexes, voir
+    // rasterizer spécilisé pour. (voire même spécialisé pour quadrilatères convexes)
     if (pts.empty())
         return;
 

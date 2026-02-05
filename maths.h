@@ -8,15 +8,45 @@ struct Vector2 {
     float x{};
     float y{};
 
-    Vector2 &operator+=(const Vector2 &in) {
+    constexpr Vector2() = default;
+    constexpr Vector2(float x_in, float y_in) : x{x_in}, y{y_in} {}
+
+    constexpr Vector2 &operator+=(const Vector2 &in) noexcept {
         x += in.x;
         y += in.y;
         return *this;
     }
-    Vector2 &operator-=(const Vector2 &in) {
+
+    constexpr Vector2 &operator-=(const Vector2 &in) noexcept {
         x -= in.x;
         y -= in.y;
         return *this;
+    }
+
+    constexpr Vector2 &operator*=(float scalaire) noexcept {
+        x *= scalaire;
+        y *= scalaire;
+        return *this;
+    }
+
+    friend constexpr Vector2 operator+(Vector2 lhs, const Vector2 &rhs) noexcept {
+        lhs += rhs;
+        return lhs;
+    }
+
+    friend constexpr Vector2 operator-(Vector2 lhs, const Vector2 &rhs) noexcept {
+        lhs -= rhs;
+        return lhs;
+    }
+
+    friend constexpr Vector2 operator*(Vector2 lhs, float rhs) noexcept {
+        lhs *= rhs;
+        return lhs;
+    }
+
+    friend constexpr Vector2 operator*(float lhs, Vector2 rhs) noexcept {
+        rhs *= lhs;
+        return rhs;
     }
 };
 

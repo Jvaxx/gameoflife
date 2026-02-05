@@ -44,13 +44,14 @@ struct Game_state {
     uint64_t draw_grid_time{0};
     uint64_t draw_tiles_time{0};
     uint64_t draw_tiles_time_internal{0};
+    uint64_t draw_tiles_count_internal{0};
     uint64_t draw_poly_time{0};
     uint64_t draw_poly_since_log{0};
     uint64_t clr_px_time{0};
     uint64_t buff_updt_time{0};
     uint64_t ticks_since_log{0};
     uint64_t last_log;
-    float mspt{500};
+    float mspt{100};
     bool playing{};
     Game_input input;
 };
@@ -145,5 +146,6 @@ Vector2 px_to_tile(View &view, Grid &grid, Vector2 &in);
 // NOTE: temp pour test, mais c'est des fonction internes
 bool tile_clic(View &view, Grid &grid, Vector2 &in);
 void process_input(Game_state *state, View &view, Grid &grid);
+void randomize_grid(Grid &grid, float proba);
 #define LOGIC_H
 #endif // !LOGIC_H
