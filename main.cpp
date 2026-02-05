@@ -39,7 +39,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     state->last_input_proc = SDL_GetTicks();
     *appstate = state;
     main_buffer->resize(game_renderer, 1440, 810);
-    game_view->pix_per_m = 1.35;
+    game_view->pix_per_m = 1.4;
     game_view->theta = 0.15;
     game_view->origin = {250, 250};
 
@@ -56,50 +56,50 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     // Update grid: target speed: state.mspt
     if (start_time - state->last_tick > state->mspt) {
-        uint64_t start_process_time{SDL_GetTicks()};
+        uint64_t start_process_time{SDL_GetPerformanceCounter()};
         if (state->playing) {
             update_grid(*game_grid);
         }
         state->last_tick += state->mspt;
-        state->process_time += SDL_GetTicks() - start_process_time;
+        state->process_time += SDL_GetPerformanceCounter() - start_process_time;
         ++state->ticks_since_log;
     }
 
     // Render screen: target speed: 50 MSPRender
     if (start_time - state->last_frame > 100) {
-        uint64_t start_render_time{SDL_GetTicks()};
+        uint64_t start_render_time{SDL_GetPerformanceCounter()};
         main_buffer->clear_pixel(0xFFFF00FF);
-        state->clr_px_time += SDL_GetTicks() - start_render_time;
+        state->clr_px_time += SDL_GetPerformanceCounter() - start_render_time;
 
-        uint64_t start_fill_time{SDL_GetTicks()};
+        uint64_t start_fill_time{SDL_GetPerformanceCounter()};
         fill_grid2(game_view, game_grid, game_renderer, state);
-        state->draw_tiles_time += SDL_GetTicks() - start_fill_time;
+        state->draw_tiles_time += SDL_GetPerformanceCounter() - start_fill_time;
 
-        uint64_t start_grid_time{SDL_GetTicks()};
+        uint64_t start_grid_time{SDL_GetPerformanceCounter()};
         draw_grid(game_view, game_grid, game_renderer);
-        state->draw_grid_time += SDL_GetTicks() - start_grid_time;
+        state->draw_grid_time += SDL_GetPerformanceCounter() - start_grid_time;
 
-        uint64_t start_updt_buff{SDL_GetTicks()};
+        uint64_t start_updt_buff{SDL_GetPerformanceCounter()};
         main_buffer->update(game_renderer);
-        state->buff_updt_time += SDL_GetTicks() - start_updt_buff;
+        state->buff_updt_time += SDL_GetPerformanceCounter() - start_updt_buff;
 
         state->last_frame += 100;
-        state->frame_time += SDL_GetTicks() - start_render_time;
+        state->frame_time += SDL_GetPerformanceCounter() - start_render_time;
         ++state->frames_since_log;
     }
 
     // Log stats: target speed: 2000 MSPLog
     if (start_time - state->last_log > 2000) {
         // std::cout << "[STATS] AVG Effective TPS: " << state->ticks_since_log / 2.000f << '\n';
-        std::cout << "[STATS] AVG MSPT: " << static_cast<float>(state->process_time) / state->ticks_since_log << '\n';
-        std::cout << "[STATS] AVG MSPF: " << static_cast<float>(state->frame_time) / state->frames_since_log << '\n';
-        // std::cout << "[STATS] AVG MSPDrawGrid: " << static_cast<float>(state->draw_grid_time) / state->frames_since_log << '\n';
-        std::cout << "[STATS] AVG MSPDrawTiles: " << static_cast<float>(state->draw_tiles_time) / state->frames_since_log << '\n';
+        std::cout << "[STATS] AVG MSPT: " << static_cast<float>(state->process_time) * 1000 / (state->ticks_since_log * SDL_GetPerformanceFrequency()) << '\n';
+        std::cout << "[STATS] AVG MSPF: " << static_cast<float>(state->frame_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
+        std::cout << "[STATS] AVG MSPDrawGrid: " << static_cast<float>(state->draw_grid_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
+        std::cout << "[STATS] AVG MSPDrawTiles: " << static_cast<float>(state->draw_tiles_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
         // std::cout << "[STATS] AVG MSPDrawTilesInternal: " << static_cast<float>(state->draw_tiles_time_internal) / state->frames_since_log << '\n';
         // std::cout << "[STATS] AVG MSPDrawPoly (x10K): " << 10000 * static_cast<float>(state->draw_poly_time) / state->draw_poly_since_log << '\n';
-        // std::cout << "[STATS] AVG MSPClrPx: " << static_cast<float>(state->clr_px_time) / state->frames_since_log << '\n';
-        // std::cout << "[STATS] AVG MSPBuffUpdt: " << static_cast<float>(state->buff_updt_time) / state->frames_since_log << '\n';
-        std::cout << state->draw_poly_since_log << '\n';
+        // std::cout << "[STATS] AVG MSPClrPx: " << static_cast<float>(state->clr_px_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
+        // std::cout << "[STATS] AVG MSPBuffUpdt: " << static_cast<float>(state->buff_updt_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
+        std::cout << "[STATS] AVG Poly/F: " << state->draw_poly_since_log << '\n';
         std::cout << '\n';
         state->ticks_since_log = 0;
         state->frames_since_log = 0;
