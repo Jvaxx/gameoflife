@@ -1,13 +1,16 @@
 #include "main.h"
 #include "maths.h"
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <ostream>
+#include <ranges>
 #include <span>
 #include <utility>
 #include <vector>
@@ -44,61 +47,76 @@ void draw_line_bresenham(Pixel_buffer *buffer, Vector2_int p1, Vector2_int p2, u
 }
 
 struct Edge {
-    int y_max;   // Y où l'arête s'arrête
+    int y_max; // Y où l'arête s'arrête
+    int y_start;
     float x;     // X courant, on itère dessus.
     float dx_dy; // dx/dy
 
     bool operator<(const Edge &other) const {
-        return x < other.x;
+        return y_start < other.y_start;
     }
 };
 
 void draw_polygon(Pixel_buffer *buffer, const std::span<Vector2> &pts, uint32_t color) {
     // WARNING: C'est le goulot d'étranglement pour le rendu. Pour des polygones convexes, voir
     // rasterizer spécilisé pour. (voire même spécialisé pour quadrilatères convexes)
-    if (pts.empty())
+    if (pts.size() < 3)
         return;
 
-    int min_y = pts[0].y, max_y = pts[0].y;
-    int min_x = pts[0].x, max_x = pts[0].x;
-    for (const auto &p : pts) {
-        min_y = std::min(min_y, static_cast<int>(p.y));
-        max_y = std::max(max_y, static_cast<int>(p.y));
-        min_x = std::min(min_x, static_cast<int>(p.x));
-        max_x = std::max(max_x, static_cast<int>(p.x));
-    }
-    if (max_y < 0 || min_y >= buffer->height || max_x < 0 || min_x >= buffer->width)
-        return;
+    std::vector<Edge> all_edges;
+    all_edges.reserve(pts.size());
+    int poly_max_y{};
+    int poly_min_y{INT_MAX};
 
-    // Tableau des arêtes
-    std::vector<std::vector<Edge>> edges_starting_at(max_y - min_y + 1);
+    // énumaration des arrêtes
     for (size_t i{}; i < pts.size(); ++i) {
         Vector2 p1 = pts[i];
         Vector2 p2 = pts[(i + 1) % pts.size()];
-
-        if (p1.y == p2.y)
-            continue; // horizontal donc inutile
+        if (static_cast<int>(p1.y) == static_cast<int>(p2.y))
+            continue; // sur le même y: pas d'intersection
         if (p1.y > p2.y)
             std::swap(p1, p2);
+        int y_sart = static_cast<int>(p1.y);
+        int y_end = static_cast<int>(p2.y);
+        if (y_sart >= buffer->height || y_end <= 0)
+            continue;
 
         Edge edge;
-        edge.y_max = p2.y;
-        edge.x = static_cast<float>(p1.x);
         edge.dx_dy = static_cast<float>(p2.x - p1.x) / (p2.y - p1.y);
+        edge.y_max = std::min(y_end, buffer->height);
+        edge.x = static_cast<float>(p1.x);
+        edge.y_start = y_sart;
 
-        edges_starting_at[p1.y - min_y].push_back(edge);
+        if (edge.y_start < 0) {
+            edge.x += edge.dx_dy * (0 - edge.y_start); // on ramène à y = 0
+            edge.y_start = 0;
+        }
+        all_edges.push_back(edge);
+        poly_max_y = std::max(poly_max_y, edge.y_max);
+        poly_min_y = std::min(poly_min_y, edge.y_start);
     }
+
+    if (all_edges.empty())
+        return;
+
+    // tri inversé des arrêtes par leur y_start
+    std::sort(all_edges.begin(), all_edges.end(), [](const Edge &a, const Edge &b) {
+        return a.y_start > b.y_start;
+    });
 
     std::vector<Edge> active_edges;
     active_edges.reserve(pts.size());
     // scanline
-    for (int y = min_y; y < max_y; ++y) {
-        auto &new_edges = edges_starting_at[y - min_y];
-        for (auto &e : new_edges) {
-            auto pos = std::lower_bound(active_edges.begin(), active_edges.end(), e);
-            active_edges.insert(pos, e);
+    int start_y = std::max(0, poly_min_y);
+    int max_scan_y = std::min(buffer->height, poly_max_y);
+    for (int y{start_y}; y < max_scan_y; ++y) {
+        // chargement des active_edges
+        while (!all_edges.empty() && (all_edges.back().y_start == y)) {
+            active_edges.push_back(all_edges.back());
+            all_edges.pop_back();
         }
 
+        // on garde uniquement les arrêtes dont y_max > yactuel
         size_t write_idx = 0;
         for (size_t read_idx = 0; read_idx < active_edges.size(); ++read_idx) {
             if (active_edges[read_idx].y_max > y) {
@@ -107,7 +125,10 @@ void draw_polygon(Pixel_buffer *buffer, const std::span<Vector2> &pts, uint32_t 
         }
         active_edges.resize(write_idx);
 
-        // Tri par insertion (plus rapide pour données presque triées)
+        if (active_edges.empty())
+            continue;
+
+        // tri par insertion sur x
         for (size_t i = 1; i < active_edges.size(); ++i) {
             Edge key = active_edges[i];
             int j = i - 1;
@@ -118,12 +139,18 @@ void draw_polygon(Pixel_buffer *buffer, const std::span<Vector2> &pts, uint32_t 
             active_edges[j + 1] = key;
         }
 
-        if (y >= 0 && y < buffer->height) {
-            uint32_t *pixel_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y * buffer->width;
-            for (size_t i = 0; i + 1 < active_edges.size(); i += 2) {
-                int x_start = std::max(0, static_cast<int>(std::ceil(active_edges[i].x)));
-                int x_end = std::min(buffer->width, static_cast<int>(std::ceil(active_edges[i + 1].x)));
+        // rasterize
+        uint32_t *pixel_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y * buffer->width;
+        for (size_t i = 0; i + 1 < active_edges.size(); i += 2) {
+            int x_start = static_cast<int>(std::ceil(active_edges[i].x));
+            int x_end = static_cast<int>(std::ceil(active_edges[i + 1].x));
 
+            if (x_start < 0)
+                x_start = 0;
+            if (x_end > buffer->width)
+                x_end = buffer->width;
+
+            if (x_end > x_start) {
                 std::fill_n(pixel_ptr + x_start, x_end - x_start, color);
             }
         }

@@ -33,7 +33,7 @@ bool get_bounding_box(View *view, Grid *grid, int *c_min, int *c_max, int *r_min
 }
 
 void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state) {
-    // NOTE: Claqué au sol. Voir fill_grid2.
+    // NOTE: Claqué au sol. Voir fill_grid2. (complexité O(n^2))
     uint64_t fill_start_time{SDL_GetTicks()};
     // calcul des limites d'affichage (en coordonnées réelles)
     int col_min, raw_min, col_max, raw_max;
@@ -73,6 +73,7 @@ void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state
 void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state) {
     // Itère ligne par ligne pour draw plusieurs tiles à la fois quand possible pour
     // réduire le nombre d'appel à draw_polygon
+    // Complexité: O(nLignesAffichées) + nVivantSurLaLigneEtNonContigu
 
     // calcul des limites d'affichage (en coordonnées réelles)
     int col_min, raw_min, col_max, raw_max;
@@ -127,6 +128,7 @@ void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *stat
             poly_buffer[2] = row_p01 + end * dx_screen;
             poly_buffer[3] = row_p01 + start * dx_screen;
             uint64_t time_start = SDL_GetPerformanceCounter();
+            // WARNING: env 90% du tmps de calc pr ce draw non-opti. Passer à un draw spécialisé dans le quad convexe.
             Graphics::draw_polygon(view->buffer, poly_buffer, 0xFF0000FF);
             state->draw_tiles_time_internal += SDL_GetPerformanceCounter() - time_start;
             state->draw_tiles_count_internal++;
@@ -137,6 +139,8 @@ void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *stat
 
 void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
     // calcul des limites d'affichage (en coordonnées réelles)
+    if (grid->tile_size * view->pix_per_m < 10)
+        return; // zoom trop faible, inutile d'afficher la grille
     int col_min, raw_min, col_max, raw_max;
     if (!get_bounding_box(view, grid, &col_min, &col_max, &raw_min, &raw_max))
         return; // complètement en dehors de l'écran
