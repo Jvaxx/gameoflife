@@ -1,3 +1,4 @@
+#include <iostream>
 #ifndef LOGIC_H
 #include "maths.h"
 #include <SDL3/SDL_render.h>
@@ -103,29 +104,37 @@ struct Pixel_buffer {
 };
 
 struct Grid {
-    // Une grille de game of life.
+    // Une grille de game of life. (Row-major)
     int w{20};
     int h{20};
     float tile_size{1.0}; // en mètres
     Vector2 origin{0, 0};
-    std::vector<int> tiles{};
+    std::vector<int> tiles1{}, tiles2{};
+    int *current, *next;
 
     Grid() {
-        tiles.resize(w * h);
+        tiles1.resize((w + 2) * (h + 2));
+        tiles2.resize((w + 2) * (h + 2));
+        current = tiles1.data();
+        next = tiles2.data();
     }
     Grid(int width, int height)
         : w{width}, h{height} {
-        tiles.resize(width * height);
+        tiles1.resize((width + 2) * (height + 2));
+        tiles2.resize((width + 2) * (height + 2));
+        current = tiles1.data();
+        next = tiles2.data();
     }
 
     int &get(int x, int y) {
-        // std::cout << "appel avec: " << x << " " << y << '\n';
+        // std::cout << "get avec: " << x << " " << y << '\n';
         assert((x >= 0 && x < w && y >= 0 && y < h) && "Pb de dimensions");
-        return tiles[x + w * y];
+        return current[(x + 1) + (w + 2) * (y + 1)];
     }
     void set(int x, int y, int value) {
+        // std::cout << "set avec: " << x << " " << y << " " << value << '\n';
         assert((x >= 0 && x < w && y >= 0 && y < h) && "Pb de dimensions");
-        tiles[x + w * y] = value;
+        current[(x + 1) + (w + 2) * (y + 1)] = value;
     }
 };
 

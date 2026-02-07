@@ -18,7 +18,7 @@ static SDL_Window *game_window = std::nullptr_t();
 static SDL_Renderer *game_renderer = std::nullptr_t();
 static Pixel_buffer *main_buffer = new Pixel_buffer{};
 static View *game_view = new View{main_buffer};
-static Grid *game_grid = new Grid(500, 500);
+static Grid *game_grid = new Grid(1000, 1000);
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -39,11 +39,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     state->last_input_proc = SDL_GetTicks();
     *appstate = state;
     main_buffer->resize(game_renderer, 1440, 810);
-    game_view->pix_per_m = 1.4;
+    game_view->pix_per_m = 1.0;
     game_view->theta = 0.15;
-    game_view->origin = {250, 250};
+    game_view->origin = {500, 500};
 
     randomize_grid(*game_grid, 0.5f);
+
+    // TODO: Boutons
 
     std::cout << "App initilisée.\n";
     return SDL_APP_CONTINUE;
@@ -152,27 +154,31 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP: {
         switch (event->key.scancode) {
-        case SDL_SCANCODE_H:
+        case SDL_SCANCODE_A:
             state->input.mv_l.press = (event->key.down);
             break;
-        case SDL_SCANCODE_J:
-            // NOTE: 4097 pour le modifieur shift, je n'arrive pas à faire fonctionner les flags SDL.
-            if (event->key.mod == 4097) {
-                state->input.rot_pos.press = (event->key.down);
-            } else {
-                state->input.mv_d.press = (event->key.down);
-            }
+        case SDL_SCANCODE_S:
+            state->input.mv_d.press = (event->key.down);
             break;
-        case SDL_SCANCODE_K:
-            if (event->key.mod == 4097) {
-                state->input.rot_neg.press = (event->key.down);
-            } else {
-                state->input.mv_u.press = (event->key.down);
-            }
+        case SDL_SCANCODE_W:
+            state->input.mv_u.press = (event->key.down);
             break;
-        case SDL_SCANCODE_L:
+        case SDL_SCANCODE_D:
             state->input.mv_r.press = (event->key.down);
             break;
+        case SDL_SCANCODE_H:
+            state->input.rot_pos.press = (event->key.down);
+            break;
+        case SDL_SCANCODE_L:
+            state->input.rot_neg.press = (event->key.down);
+            break;
+        case SDL_SCANCODE_J:
+            state->input.wheel.scroll = (event->key.down);
+            break;
+        case SDL_SCANCODE_K:
+            state->input.wheel.scroll = -(event->key.down);
+            break;
+
         case SDL_SCANCODE_SPACE:
             state->input.pause.press = (event->key.down) ? 1 : state->input.pause.press;
             break;

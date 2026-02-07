@@ -96,7 +96,7 @@ void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *stat
         {col_min * grid->tile_size + grid->origin.x, raw_max * grid->tile_size + grid->origin.y},
     };
     background = Maths::transformed(background, m3);
-    Graphics::draw_polygon(view->buffer, background, 0xFFFFFFFF);
+    Graphics::draw_convex_quad(view->buffer, background, 0xFFFFFFFF);
     state->draw_poly_since_log += 1;
 
     std::array<Vector2, 4> poly_buffer;
@@ -128,8 +128,7 @@ void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *stat
             poly_buffer[2] = row_p01 + end * dx_screen;
             poly_buffer[3] = row_p01 + start * dx_screen;
             uint64_t time_start = SDL_GetPerformanceCounter();
-            // WARNING: env 90% du tmps de calc pr ce draw non-opti. Passer à un draw spécialisé dans le quad convexe.
-            Graphics::draw_polygon(view->buffer, poly_buffer, 0xFF0000FF);
+            Graphics::draw_convex_quad(view->buffer, poly_buffer, 0xFF0000FF);
             state->draw_tiles_time_internal += SDL_GetPerformanceCounter() - time_start;
             state->draw_tiles_count_internal++;
             state->draw_poly_since_log += 1;
@@ -139,7 +138,7 @@ void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *stat
 
 void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
     // calcul des limites d'affichage (en coordonnées réelles)
-    if (grid->tile_size * view->pix_per_m < 10)
+    if (grid->tile_size * view->pix_per_m < 5)
         return; // zoom trop faible, inutile d'afficher la grille
     int col_min, raw_min, col_max, raw_max;
     if (!get_bounding_box(view, grid, &col_min, &col_max, &raw_min, &raw_max))
@@ -173,30 +172,28 @@ void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
 }
 
 void update_grid(Grid &grid) {
-    Grid old_grid{grid};
-    for (int row{}; row < grid.h; ++row) {
-        for (int col{}; col < grid.w; ++col) {
-            int sum{};
-            for (int x{-1}; x < 2; ++x) {
-                for (int y{-1}; y < 2; ++y) {
-                    if (col + x >= 0 && col + x < grid.w && row + y >= 0 && row + y < grid.h && (x != 0 || y != 0))
-                        sum += (old_grid.get(col + x, row + y)) ? 1 : 0;
-                }
-            }
-            switch (sum) {
-            case 3:
-                grid.set(col, row, 1);
-                break;
+    const int stride = grid.w + 2;
 
-            case 2:
-                grid.set(col, row, grid.get(col, row));
-                break;
+    const int *row_top = grid.current;
+    const int *row_mid = grid.current + stride;
+    const int *row_bot = grid.current + 2 * stride;
 
-            default:
-                grid.set(col, row, 0);
-            }
+    int *p_dest = grid.next + stride;
+
+    for (int row{1}; row <= grid.h; ++row) {
+        for (int col{1}; col <= grid.w; ++col) {
+            int sum = row_top[col - 1] + row_top[col] + row_top[col + 1] +
+                      row_mid[col - 1] + row_mid[col + 1] +
+                      row_bot[col - 1] + row_bot[col] + row_bot[col + 1];
+
+            p_dest[col] = (sum == 3) | ((sum == 2) & row_mid[col]);
         }
+        row_top += stride;
+        row_mid += stride;
+        row_bot += stride;
+        p_dest += stride;
     }
+    std::swap(grid.current, grid.next);
 }
 
 Vector2 px_to_tile(View &view, Grid &grid, Vector2 &in) {
@@ -321,7 +318,7 @@ void randomize_grid(Grid &grid, float proba) {
     for (int X{}; X < grid.w; ++X) {
         for (int Y{}; Y < grid.h; ++Y) {
             if (alive(mt) < proba) {
-                grid.set(X, Y, 1);
+                grid.current[X + 1 + (Y + 1) * (grid.w + 2)] = 1;
             }
         }
     }

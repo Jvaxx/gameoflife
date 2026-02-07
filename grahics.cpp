@@ -161,6 +161,142 @@ void draw_polygon(Pixel_buffer *buffer, const std::span<Vector2> &pts, uint32_t 
     }
 }
 
+// Structure légère pour maintenir l'état d'un côté du quad
+struct EdgeWalker {
+    float x;       // Position X courante
+    float dx_dy;   // Pente (inverse slope)
+    int y_current; // Y courant
+    int y_end;     // Y cible pour ce segment
+    int p_index;   // Index du sommet de départ actuel
+    int direction; // +1 ou -1 (sens de parcours dans le tableau de points)
+
+    // Vérifie si le walker a fini son segment et doit passer au suivant
+    bool is_finished() const { return y_current >= y_end; }
+};
+
+void draw_convex_quad(Pixel_buffer *buffer, const std::span<Vector2> &pts, uint32_t color) {
+    // NOTE: Fonction générée.
+
+    // Optimisation : On suppose pts.size() == 4
+    if (pts.size() != 4)
+        return;
+
+    // 1. Trouver le sommet le plus haut (Top) et le plus bas (Bottom)
+    int top_idx = 0;
+    int bot_idx = 0;
+    for (int i = 1; i < 4; ++i) {
+        if (pts[i].y < pts[top_idx].y)
+            top_idx = i;
+        if (pts[i].y > pts[bot_idx].y)
+            bot_idx = i;
+    }
+
+    int y_min = static_cast<int>(pts[top_idx].y);
+    int y_max = static_cast<int>(pts[bot_idx].y);
+
+    // Culling vertical rapide
+    if (y_min >= buffer->height || y_max <= 0 || y_min == y_max)
+        return;
+
+    // Helper pour initialiser/mettre à jour un walker
+    auto setup_walker_segment = [&](EdgeWalker &w) {
+        // On récupère les points : P_start -> P_target
+        // L'index cible dépend de la direction (+1 ou -1 modulo 4)
+        int next_idx = (w.p_index + w.direction + 4) % 4;
+
+        const Vector2 &p1 = pts[w.p_index];
+        const Vector2 &p2 = pts[next_idx];
+
+        float dy = p2.y - p1.y;
+        w.y_end = static_cast<int>(p2.y);
+
+        // Si segment horizontal ou problème, dx_dy = 0
+        if (std::abs(dy) < 0.001f) {
+            w.dx_dy = 0;
+        } else {
+            w.dx_dy = (p2.x - p1.x) / dy;
+        }
+
+        // Initialisation de X et Y
+        w.x = p1.x;
+        w.y_current = static_cast<int>(p1.y);
+
+        // Pre-stepping (Clipping Top)
+        // Si le segment commence hors écran (en haut), on avance X
+        if (w.y_current < 0) {
+            w.x += w.dx_dy * (0 - w.y_current);
+            w.y_current = 0;
+        }
+
+        // On prépare l'index pour le prochain saut
+        w.p_index = next_idx;
+    };
+
+    // 2. Initialiser les deux walkers partant du sommet Top
+    // Walker 1 part dans le sens horaire (+1), Walker 2 anti-horaire (-1)
+    EdgeWalker left_w, right_w;
+
+    left_w.p_index = top_idx;
+    left_w.direction = -1; // Vers "l'arrière" du tableau
+    setup_walker_segment(left_w);
+
+    right_w.p_index = top_idx;
+    right_w.direction = 1; // Vers "l'avant" du tableau
+    setup_walker_segment(right_w);
+
+    // 3. Boucle de rendu unique (Single Pass)
+    int start_y = std::max(0, y_min);
+    int end_y = std::min(buffer->height, y_max);
+
+    uint32_t *row_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + start_y * buffer->width;
+
+    for (int y = start_y; y < end_y; ++y) {
+        // A. Gestion des changements de segment (le "coude" du quad)
+        // Si un walker a atteint la fin de son segment, on passe au suivant
+        // Note: on utilise while pour gérer les segments très courts/horizontaux
+        while (left_w.is_finished() && left_w.p_index != bot_idx) {
+            setup_walker_segment(left_w);
+            // Recalage précis si le segment suivant commençait un peu avant/après Y actuel
+            // (nécessaire à cause des arrondis float -> int)
+            float diff = static_cast<float>(y - left_w.y_current);
+            if (diff > 0)
+                left_w.x += left_w.dx_dy * diff;
+        }
+        while (right_w.is_finished() && right_w.p_index != bot_idx) {
+            setup_walker_segment(right_w);
+            float diff = static_cast<float>(y - right_w.y_current);
+            if (diff > 0)
+                right_w.x += right_w.dx_dy * diff;
+        }
+
+        // B. Rendu de la ligne
+        // On ne sait pas qui est gauche/droite à cause du winding order,
+        // donc on trie simplement x1 et x2.
+        int x1 = static_cast<int>(left_w.x);
+        int x2 = static_cast<int>(right_w.x);
+        if (x1 > x2)
+            std::swap(x1, x2);
+
+        // Clipping Horizontal
+        x1 = std::max(0, x1);
+        x2 = std::min(buffer->width, x2);
+
+        if (x2 > x1) {
+            std::fill_n(row_ptr + x1, x2 - x1, color);
+        }
+
+        // C. Avancement
+        left_w.x += left_w.dx_dy;
+        right_w.x += right_w.dx_dy;
+
+        // Mise à jour de y_current pour la logique de changement de segment
+        left_w.y_current++;
+        right_w.y_current++;
+
+        row_ptr += buffer->width;
+    }
+}
+
 void draw_line_horizontal(Pixel_buffer *buffer, int y, int x1, int x2, uint32_t color) {
     if (x2 < x1)
         std::swap(x1, x2);
