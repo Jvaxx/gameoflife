@@ -1,4 +1,5 @@
 #include "main.h"
+#include "gui.h"
 #include "logic.h"
 #include "maths.h"
 #include <SDL3/SDL_events.h>
@@ -17,8 +18,12 @@
 static SDL_Window *game_window = std::nullptr_t();
 static SDL_Renderer *game_renderer = std::nullptr_t();
 static Screen_buffer *screen = new Screen_buffer{};
-static World_View *game_world_view = new World_View{&screen->main_view};
+static World_view *game_world_view = new World_view{&screen->main_view};
+static Menu_view *game_menu_view = new Menu_view{&screen->menu_view};
 static Grid *game_grid = new Grid(1000, 1000);
+
+Events_button *bouton1 = new Events_button();
+Events_button *bouton2 = new Events_button();
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -46,6 +51,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     randomize_grid(*game_grid, 0.5f);
 
     // TODO: Boutons
+    game_menu_view->buttons.push_back(*bouton1);
+    game_menu_view->buttons.push_back(*bouton2);
 
     std::cout << "App initilisée.\n";
     return SDL_APP_CONTINUE;
@@ -88,8 +95,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
         // Render menu:
         uint64_t start_render_menu_time{SDL_GetPerformanceCounter()};
-        if (screen->menu_view.active) {
-            screen->menu_view.clear_pixel(0xFFFFFFFF);
+        if (screen->menu_view.active && screen->menu_view.waiting_update) {
+            render_menu(game_menu_view);
         }
         state->render_menu_time += SDL_GetPerformanceCounter() - start_render_menu_time;
 

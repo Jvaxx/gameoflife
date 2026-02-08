@@ -1,10 +1,11 @@
-#include <SDL3/SDL_rect.h>
-#include <iostream>
 #ifndef LOGIC_H
+#include "gui.h"
 #include "maths.h"
+#include <SDL3/SDL_rect.h>
 #include <SDL3/SDL_render.h>
 #include <cassert>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <vector>
 struct Mouse_button {
@@ -73,18 +74,18 @@ struct View_buffer {
     int pitch{};
     bool active{true};
     bool waiting_update{true};
-    SDL_FRect fdest{0, 0};
+    SDL_FRect rec{0, 0};
 
     View_buffer() = default;
 
     void resize(SDL_Renderer *renderer, int new_width, int new_height) {
-        fdest.w = new_width;
-        fdest.h = new_height;
-        pixels.resize(fdest.w * fdest.h);
+        rec.w = new_width;
+        rec.h = new_height;
+        pixels.resize(rec.w * rec.h);
         SDL_Texture *new_texture = SDL_CreateTexture(renderer,
                                                      SDL_PIXELFORMAT_ARGB8888,
                                                      SDL_TEXTUREACCESS_STREAMING,
-                                                     fdest.w, fdest.h);
+                                                     rec.w, rec.h);
         texture.reset(new_texture);
         pitch = new_width * sizeof(uint32_t);
         waiting_update = true;
@@ -100,12 +101,12 @@ struct View_buffer {
     void render(SDL_Renderer *renderer) {
         if (active && texture) {
             SDL_RenderTexture(renderer, texture.get(), nullptr,
-                              &fdest);
+                              &rec);
         }
     }
 
     void clear_pixel(uint32_t color) {
-        pixels.assign(fdest.w * fdest.h, color);
+        pixels.assign(rec.w * rec.h, color);
     }
 };
 
@@ -121,12 +122,12 @@ struct Screen_buffer {
     void resize(SDL_Renderer *renderer, int new_width, int new_height) {
         w = new_width;
         h = new_height;
-        main_view.resize(renderer, w / 2, h / 3);
-        main_view.fdest.x = 20;
-        main_view.fdest.y = 10;
-        menu_view.resize(renderer, w / 2, h / 6);
-        menu_view.fdest.x = 10;
-        menu_view.fdest.y = 400;
+        main_view.resize(renderer, w, 7 * h / 8);
+        main_view.rec.x = 0;
+        main_view.rec.y = 0;
+        menu_view.resize(renderer, w, h / 8);
+        menu_view.rec.x = 0;
+        menu_view.rec.y = h - (h / 8.0f);
     }
 
     void render(SDL_Renderer *renderer) {
@@ -178,23 +179,36 @@ struct Grid {
     }
 };
 
-struct World_View {
+struct World_view {
     // Le view-port, distances et coordonnées en mètres. Y va vers le bas.
-    View_buffer *buffer;
+    View_buffer *buff;
     float pix_per_m{50};  // Le zoom
     float theta{0};       // En radians
     Vector2 origin{0, 0}; // Le milieu du view-port, en mètres
 };
 
-void fill_grid(World_View *view, Grid *grid, Game_state *state);
-void fill_grid2(World_View *view, Grid *grid, Game_state *state);
-void draw_grid(World_View *view, Grid *grid);
+struct Events_button {
+    // Un boutton du menu
+    int w{50}; // en pixels
+    int h{50};
+};
+
+struct Menu_view {
+    // Les éléments du menu. Equivalent du World_view pour le menu.
+    View_buffer *buff;
+    std::vector<Events_button> buttons;
+};
+
+void fill_grid(World_view *view, Grid *grid, Game_state *state);
+void fill_grid2(World_view *view, Grid *grid, Game_state *state);
+void draw_grid(World_view *view, Grid *grid);
 void update_grid(Grid &grid);
-Vector2 px_to_tile(World_View &view, Grid &grid, Vector2 &in);
+Vector2 px_to_tile(World_view &view, Grid &grid, Vector2 &in);
 
 // NOTE: temp pour test, mais c'est des fonction internes
-bool tile_clic(World_View &view, Grid &grid, Vector2 &in);
-void process_input(Game_state *state, World_View &view, Grid &grid);
+bool tile_clic(World_view &view, Grid &grid, Vector2 &in);
+void process_input(Game_state *state, World_view &view, Grid &grid);
 void randomize_grid(Grid &grid, float proba);
+void render_menu(Menu_view *view);
 #define LOGIC_H
 #endif // !LOGIC_H

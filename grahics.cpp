@@ -17,7 +17,7 @@
 namespace Graphics {
 void draw_line_bresenham(View_buffer *buffer, Vector2_int p1, Vector2_int p2, uint32_t color) {
     using namespace Maths;
-    if (cohen_sutherland_frame(&p1, &p2, buffer->fdest.w, buffer->fdest.h)) {
+    if (cohen_sutherland_frame(&p1, &p2, buffer->rec.w, buffer->rec.h)) {
         int x0{p1.x};
         int y0{p1.y};
         int x1{p2.x};
@@ -35,7 +35,7 @@ void draw_line_bresenham(View_buffer *buffer, Vector2_int p1, Vector2_int p2, ui
         int error = 0;
 
         for (int i{}; i <= main_vector; ++i) {
-            buffer->pixels.data()[x0 + static_cast<int>(buffer->fdest.w) * y0] = color;
+            buffer->pixels.data()[x0 + static_cast<int>(buffer->rec.w) * y0] = color;
             *main_axis += main_increment;
             error += small_vector * 2;
             if (error > main_vector) {
@@ -78,12 +78,12 @@ void draw_polygon(View_buffer *buffer, const std::span<Vector2> &pts, uint32_t c
             std::swap(p1, p2);
         int y_sart = static_cast<int>(p1.y);
         int y_end = static_cast<int>(p2.y);
-        if (y_sart >= buffer->fdest.h || y_end <= 0)
+        if (y_sart >= buffer->rec.h || y_end <= 0)
             continue;
 
         Edge edge;
         edge.dx_dy = static_cast<float>(p2.x - p1.x) / (p2.y - p1.y);
-        edge.y_max = std::min(y_end, static_cast<int>(buffer->fdest.h));
+        edge.y_max = std::min(y_end, static_cast<int>(buffer->rec.h));
         edge.x = static_cast<float>(p1.x);
         edge.y_start = y_sart;
 
@@ -108,7 +108,7 @@ void draw_polygon(View_buffer *buffer, const std::span<Vector2> &pts, uint32_t c
     active_edges.reserve(pts.size());
     // scanline
     int start_y = std::max(0, poly_min_y);
-    int max_scan_y = std::min(static_cast<int>(buffer->fdest.h), poly_max_y);
+    int max_scan_y = std::min(static_cast<int>(buffer->rec.h), poly_max_y);
     for (int y{start_y}; y < max_scan_y; ++y) {
         // chargement des active_edges
         while (!all_edges.empty() && (all_edges.back().y_start == y)) {
@@ -140,15 +140,15 @@ void draw_polygon(View_buffer *buffer, const std::span<Vector2> &pts, uint32_t c
         }
 
         // rasterize
-        uint32_t *pixel_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y * static_cast<int>(buffer->fdest.w);
+        uint32_t *pixel_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y * static_cast<int>(buffer->rec.w);
         for (size_t i = 0; i + 1 < active_edges.size(); i += 2) {
             int x_start = static_cast<int>(std::ceil(active_edges[i].x));
             int x_end = static_cast<int>(std::ceil(active_edges[i + 1].x));
 
             if (x_start < 0)
                 x_start = 0;
-            if (x_end > buffer->fdest.w)
-                x_end = buffer->fdest.w;
+            if (x_end > buffer->rec.w)
+                x_end = buffer->rec.w;
 
             if (x_end > x_start) {
                 std::fill_n(pixel_ptr + x_start, x_end - x_start, color);
@@ -195,7 +195,7 @@ void draw_convex_quad(View_buffer *buffer, const std::span<Vector2> &pts, uint32
     int y_max = static_cast<int>(pts[bot_idx].y);
 
     // Culling vertical rapide
-    if (y_min >= buffer->fdest.h || y_max <= 0 || y_min == y_max)
+    if (y_min >= buffer->rec.h || y_max <= 0 || y_min == y_max)
         return;
 
     // Helper pour initialiser/mettre à jour un walker
@@ -246,9 +246,9 @@ void draw_convex_quad(View_buffer *buffer, const std::span<Vector2> &pts, uint32
 
     // 3. Boucle de rendu unique (Single Pass)
     int start_y = std::max(0, y_min);
-    int end_y = std::min(static_cast<int>(buffer->fdest.h), y_max);
+    int end_y = std::min(static_cast<int>(buffer->rec.h), y_max);
 
-    uint32_t *row_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + start_y * static_cast<int>(buffer->fdest.w);
+    uint32_t *row_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + start_y * static_cast<int>(buffer->rec.w);
 
     for (int y = start_y; y < end_y; ++y) {
         // A. Gestion des changements de segment (le "coude" du quad)
@@ -279,7 +279,7 @@ void draw_convex_quad(View_buffer *buffer, const std::span<Vector2> &pts, uint32
 
         // Clipping Horizontal
         x1 = std::max(0, x1);
-        x2 = std::min(static_cast<int>(buffer->fdest.w), x2);
+        x2 = std::min(static_cast<int>(buffer->rec.w), x2);
 
         if (x2 > x1) {
             std::fill_n(row_ptr + x1, x2 - x1, color);
@@ -293,18 +293,18 @@ void draw_convex_quad(View_buffer *buffer, const std::span<Vector2> &pts, uint32
         left_w.y_current++;
         right_w.y_current++;
 
-        row_ptr += static_cast<int>(buffer->fdest.w);
+        row_ptr += static_cast<int>(buffer->rec.w);
     }
 }
 
 void draw_line_horizontal(View_buffer *buffer, int y, int x1, int x2, uint32_t color) {
     if (x2 < x1)
         std::swap(x1, x2);
-    if (x2 < 0 || x1 >= buffer->fdest.w || y < 0 || y >= buffer->fdest.h)
+    if (x2 < 0 || x1 >= buffer->rec.w || y < 0 || y >= buffer->rec.h)
         return;
     x1 = (x1 < 0) ? 0 : x1;
-    x2 = (x2 >= buffer->fdest.w) ? buffer->fdest.w - 1 : x2;
-    uint32_t *pix_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y * static_cast<int>(buffer->fdest.w);
+    x2 = (x2 >= buffer->rec.w) ? buffer->rec.w - 1 : x2;
+    uint32_t *pix_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y * static_cast<int>(buffer->rec.w);
     for (; x1 <= x2; ++x1) {
         pix_ptr[x1] = color;
     }
@@ -313,14 +313,14 @@ void draw_line_horizontal(View_buffer *buffer, int y, int x1, int x2, uint32_t c
 void draw_line_vertical(View_buffer *buffer, int x, int y1, int y2, uint32_t color) {
     if (y2 < y1)
         std::swap(y1, y2);
-    if (x < 0 || x >= buffer->fdest.w || y2 < 0 || y1 >= buffer->fdest.h)
+    if (x < 0 || x >= buffer->rec.w || y2 < 0 || y1 >= buffer->rec.h)
         return;
     y1 = (y1 < 0) ? 0 : y1;
-    y2 = (y2 >= buffer->fdest.h) ? buffer->fdest.h - 1 : y2;
-    uint32_t *pix_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y1 * static_cast<int>(buffer->fdest.w) + x;
+    y2 = (y2 >= buffer->rec.h) ? buffer->rec.h - 1 : y2;
+    uint32_t *pix_ptr = reinterpret_cast<uint32_t *>(buffer->pixels.data()) + y1 * static_cast<int>(buffer->rec.w) + x;
     for (; y1 <= y2; ++y1) {
         *pix_ptr = color;
-        pix_ptr += static_cast<int>(buffer->fdest.w);
+        pix_ptr += static_cast<int>(buffer->rec.w);
     }
 }
 

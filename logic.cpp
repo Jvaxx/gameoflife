@@ -6,11 +6,11 @@
 #include <random>
 #include <vector>
 
-bool get_bounding_box(World_View *view, Grid *grid, int *c_min, int *c_max, int *r_min, int *r_max) {
+bool get_bounding_box(World_view *view, Grid *grid, int *c_min, int *c_max, int *r_min, int *r_max) {
     float sin_t = std::abs(std::sin(view->theta));
     float cos_t = std::abs(std::cos(view->theta));
-    float w = view->buffer->fdest.w / (view->pix_per_m * 2);
-    float h = view->buffer->fdest.h / (view->pix_per_m * 2);
+    float w = view->buff->rec.w / (view->pix_per_m * 2);
+    float h = view->buff->rec.h / (view->pix_per_m * 2);
 
     float Rx = w * cos_t + h * sin_t;
     float Ry = w * sin_t + h * cos_t;
@@ -29,7 +29,7 @@ bool get_bounding_box(World_View *view, Grid *grid, int *c_min, int *c_max, int 
     return true;
 }
 
-void fill_grid(World_View *view, Grid *grid, Game_state *state) {
+void fill_grid(World_view *view, Grid *grid, Game_state *state) {
     // NOTE: Claqué au sol. Voir fill_grid2. (complexité O(n^2))
     uint64_t fill_start_time{SDL_GetTicks()};
     // calcul des limites d'affichage (en coordonnées réelles)
@@ -39,8 +39,8 @@ void fill_grid(World_View *view, Grid *grid, Game_state *state) {
 
     const View_Matrix m3 = Maths::mat_w_to_scr(view->origin, view->theta,
                                                view->pix_per_m,
-                                               view->buffer->fdest.w,
-                                               view->buffer->fdest.h);
+                                               view->buff->rec.w,
+                                               view->buff->rec.h);
 
     for (int Y{raw_min}; Y < raw_max; ++Y) {
         for (int X{col_min}; X < col_max; ++X) {
@@ -54,11 +54,11 @@ void fill_grid(World_View *view, Grid *grid, Game_state *state) {
             tile = Maths::transformed(tile, m3);
             if (grid->get(X, Y)) {
                 uint64_t start_draw_poly{SDL_GetTicks()};
-                Graphics::draw_polygon(view->buffer, tile, 0xFF0000FF);
+                Graphics::draw_polygon(view->buff, tile, 0xFF0000FF);
                 state->draw_poly_time += SDL_GetTicks() - start_draw_poly;
             } else {
                 uint64_t start_draw_poly{SDL_GetTicks()};
-                Graphics::draw_polygon(view->buffer, tile, 0xFFFFFFFF);
+                Graphics::draw_polygon(view->buff, tile, 0xFFFFFFFF);
                 state->draw_poly_time += SDL_GetTicks() - start_draw_poly;
             }
             ++state->draw_poly_since_log;
@@ -67,7 +67,7 @@ void fill_grid(World_View *view, Grid *grid, Game_state *state) {
     state->draw_tiles_time_internal += SDL_GetTicks() - fill_start_time;
 }
 
-void fill_grid2(World_View *view, Grid *grid, Game_state *state) {
+void fill_grid2(World_view *view, Grid *grid, Game_state *state) {
     // Itère ligne par ligne pour draw plusieurs tiles à la fois quand possible pour
     // réduire le nombre d'appel à draw_polygon
     // Complexité: O(nLignesAffichées) + nVivantSurLaLigneEtNonContigu
@@ -79,8 +79,8 @@ void fill_grid2(World_View *view, Grid *grid, Game_state *state) {
 
     const View_Matrix m3 = Maths::mat_w_to_scr(view->origin, view->theta,
                                                view->pix_per_m,
-                                               view->buffer->fdest.w,
-                                               view->buffer->fdest.h);
+                                               view->buff->rec.w,
+                                               view->buff->rec.h);
     Vector2 dx_screen{
         grid->tile_size * m3.m00,
         grid->tile_size * m3.m10};
@@ -93,7 +93,7 @@ void fill_grid2(World_View *view, Grid *grid, Game_state *state) {
         {col_min * grid->tile_size + grid->origin.x, raw_max * grid->tile_size + grid->origin.y},
     };
     background = Maths::transformed(background, m3);
-    Graphics::draw_convex_quad(view->buffer, background, 0xFFFFFFFF);
+    Graphics::draw_convex_quad(view->buff, background, 0xFFFFFFFF);
     state->draw_poly_since_log += 1;
 
     std::array<Vector2, 4> poly_buffer;
@@ -124,7 +124,7 @@ void fill_grid2(World_View *view, Grid *grid, Game_state *state) {
             poly_buffer[2] = row_p01 + end * dx_screen;
             poly_buffer[3] = row_p01 + start * dx_screen;
             uint64_t time_start = SDL_GetPerformanceCounter();
-            Graphics::draw_convex_quad(view->buffer, poly_buffer, 0xFF0000FF);
+            Graphics::draw_convex_quad(view->buff, poly_buffer, 0xFF0000FF);
             state->draw_tiles_time_internal += SDL_GetPerformanceCounter() - time_start;
             state->draw_tiles_count_internal++;
             state->draw_poly_since_log += 1;
@@ -132,7 +132,7 @@ void fill_grid2(World_View *view, Grid *grid, Game_state *state) {
     }
 }
 
-void draw_grid(World_View *view, Grid *grid) {
+void draw_grid(World_view *view, Grid *grid) {
     // calcul des limites d'affichage (en coordonnées réelles)
     if (grid->tile_size * view->pix_per_m < 5)
         return; // zoom trop faible, inutile d'afficher la grille
@@ -142,8 +142,8 @@ void draw_grid(World_View *view, Grid *grid) {
 
     const View_Matrix m3 = Maths::mat_w_to_scr(view->origin, view->theta,
                                                view->pix_per_m,
-                                               view->buffer->fdest.w,
-                                               view->buffer->fdest.h);
+                                               view->buff->rec.w,
+                                               view->buff->rec.h);
     // lignes verticales
     for (int X{col_min}; X <= col_max; ++X) {
         Vector2 p1 = {X * grid->tile_size + grid->origin.x, raw_min * grid->tile_size + grid->origin.y};
@@ -152,7 +152,7 @@ void draw_grid(World_View *view, Grid *grid) {
         p2 = Maths::transformed(p2, m3);
         Vector2_int p1_int = Maths::pt_float_to_int(p1);
         Vector2_int p2_int = Maths::pt_float_to_int(p2);
-        Graphics::draw_line_bresenham(view->buffer, p1_int, p2_int, 0xFF00FF00);
+        Graphics::draw_line_bresenham(view->buff, p1_int, p2_int, 0xFF00FF00);
     }
 
     // lignes horizontales
@@ -163,7 +163,7 @@ void draw_grid(World_View *view, Grid *grid) {
         p2 = Maths::transformed(p2, m3);
         Vector2_int p1_int = Maths::pt_float_to_int(p1);
         Vector2_int p2_int = Maths::pt_float_to_int(p2);
-        Graphics::draw_line_bresenham(view->buffer, p1_int, p2_int, 0xFF00FF00);
+        Graphics::draw_line_bresenham(view->buff, p1_int, p2_int, 0xFF00FF00);
     }
 }
 
@@ -192,17 +192,17 @@ void update_grid(Grid &grid) {
     std::swap(grid.current, grid.next);
 }
 
-Vector2 px_to_tile(World_View &view, Grid &grid, Vector2 &in) {
+Vector2 px_to_tile(World_view &view, Grid &grid, Vector2 &in) {
     // Transforme les coordonnées Ecran (px) vers coordonnées dans le repère de la grille.
     // Peut-être out of bounds sans problème.
     View_Matrix m = Maths::mat_scr_to_w(view.origin, view.theta, view.pix_per_m,
-                                        view.buffer->fdest.w, view.buffer->fdest.h);
+                                        view.buff->rec.w, view.buff->rec.h);
     Vector2 real{Maths::transformed(in, m)};
     real += grid.origin;
     return {real.x / grid.tile_size, real.y / grid.tile_size};
 }
 
-bool tile_clic(World_View &view, Grid &grid, Vector2 in, int value) {
+bool tile_clic(World_view &view, Grid &grid, Vector2 in, int value) {
     // Allume la case cliquée (prend les coordonnées pixel brutes de l'écran) si la case est valide.
     // Ne fait rien sinon. Renvoie true si succès, false si échec.
     Vector2 px{px_to_tile(view, grid, in)};
@@ -214,7 +214,7 @@ bool tile_clic(World_View &view, Grid &grid, Vector2 in, int value) {
     return true;
 }
 
-void process_input(Game_state *state, World_View &view, Grid &grid) {
+void process_input(Game_state *state, World_view &view, Grid &grid) {
     // std::cout << "    Processing input\n";
     uint64_t start_time = SDL_GetTicks();
     bool input_processed{false};
@@ -318,4 +318,19 @@ void randomize_grid(Grid &grid, float proba) {
             }
         }
     }
+}
+
+void render_menu(Menu_view *view) {
+    std::cout << "enter render_menu\n";
+    view->buff->clear_pixel(0xFFFFFFFF);
+    Vector2 p1, p2, p3, p4;
+    for (int i = 0; i < view->buttons.size(); ++i) {
+        p1 = {static_cast<float>(view->buttons[i].w + 10) * i + 20, 20};
+        p2 = {static_cast<float>(view->buttons[i].w) * (i + 1) + 20, 20};
+        p3 = {static_cast<float>(view->buttons[i].w) * (i + 1) + 20, static_cast<float>(view->buttons[i].h) + 20};
+        p4 = {static_cast<float>(view->buttons[i].w + 10) * i + 20, static_cast<float>(view->buttons[i].h) + 20};
+        std::vector<Vector2> corners{p1, p2, p3, p4};
+        Graphics::draw_convex_quad(view->buff, corners, 0xFFFF0000);
+    }
+    view->buff->waiting_update = true;
 }
