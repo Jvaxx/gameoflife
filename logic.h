@@ -1,3 +1,4 @@
+#include <SDL3/SDL_rect.h>
 #include <iostream>
 #ifndef LOGIC_H
 #include "maths.h"
@@ -43,12 +44,13 @@ struct Game_state {
     uint64_t frames_since_log{0};
     uint64_t frame_time{0};
     uint64_t draw_grid_time{0};
-    uint64_t draw_tiles_time{0};
+    uint64_t fill_tiles_time{0};
     uint64_t draw_tiles_time_internal{0};
     uint64_t draw_tiles_count_internal{0};
     uint64_t draw_poly_time{0};
     uint64_t draw_poly_since_log{0};
     uint64_t clr_px_time{0};
+    uint64_t render_menu_time{0};
     uint64_t buff_updt_time{0};
     uint64_t ticks_since_log{0};
     uint64_t last_log;
@@ -64,42 +66,80 @@ struct Texture_deleter {
     }
 };
 
-struct Pixel_buffer {
-    // L'écran.
+struct View_buffer {
+    // Buffer de pixels d'une view (activité princpale, menu, etc...)
     std::unique_ptr<SDL_Texture, Texture_deleter> texture;
     std::vector<uint32_t> pixels{};
-    int width{};
-    int height{};
     int pitch{};
-    int bytes_per_pixel{4};
+    bool active{true};
+    bool waiting_update{true};
+    SDL_FRect fdest{0, 0};
 
-    Pixel_buffer() = default;
+    View_buffer() = default;
 
     void resize(SDL_Renderer *renderer, int new_width, int new_height) {
-        width = new_width;
-        height = new_height;
-        pixels.resize(width * height);
+        fdest.w = new_width;
+        fdest.h = new_height;
+        pixels.resize(fdest.w * fdest.h);
         SDL_Texture *new_texture = SDL_CreateTexture(renderer,
                                                      SDL_PIXELFORMAT_ARGB8888,
                                                      SDL_TEXTUREACCESS_STREAMING,
-                                                     width, height);
+                                                     fdest.w, fdest.h);
         texture.reset(new_texture);
         pitch = new_width * sizeof(uint32_t);
+        waiting_update = true;
     }
 
-    void update(SDL_Renderer *renderer) {
-        SDL_UpdateTexture(texture.get(), nullptr, pixels.data(), pitch);
-        SDL_RenderTexture(renderer, texture.get(), nullptr, nullptr);
-        SDL_RenderPresent(renderer);
+    void upload_if_needed() {
+        if (waiting_update && texture) {
+            SDL_UpdateTexture(texture.get(), nullptr, pixels.data(), pitch);
+            waiting_update = false;
+        }
     }
 
-    void set_pixel(int x, int y, uint32_t pixel) {
-        assert(x >= 0 && x < width && y >= 0 && y < height && "Problèmes de dimensions.");
-        pixels[width * y + x] = pixel;
+    void render(SDL_Renderer *renderer) {
+        if (active && texture) {
+            SDL_RenderTexture(renderer, texture.get(), nullptr,
+                              &fdest);
+        }
     }
 
     void clear_pixel(uint32_t color) {
-        pixels.assign(width * height, color);
+        pixels.assign(fdest.w * fdest.h, color);
+    }
+};
+
+struct Screen_buffer {
+    // Buffer de pixels final (c'est l'écran). Contient toutes les views.
+    int w{};
+    int h{};
+    View_buffer main_view{};
+    View_buffer menu_view{};
+
+    Screen_buffer() = default;
+
+    void resize(SDL_Renderer *renderer, int new_width, int new_height) {
+        w = new_width;
+        h = new_height;
+        main_view.resize(renderer, w / 2, h / 3);
+        main_view.fdest.x = 20;
+        main_view.fdest.y = 10;
+        menu_view.resize(renderer, w / 2, h / 6);
+        menu_view.fdest.x = 10;
+        menu_view.fdest.y = 400;
+    }
+
+    void render(SDL_Renderer *renderer) {
+        main_view.upload_if_needed();
+        menu_view.upload_if_needed();
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        main_view.render(renderer);
+        menu_view.render(renderer);
+
+        SDL_RenderPresent(renderer);
     }
 };
 
@@ -138,23 +178,23 @@ struct Grid {
     }
 };
 
-struct View {
+struct World_View {
     // Le view-port, distances et coordonnées en mètres. Y va vers le bas.
-    Pixel_buffer *buffer;
+    View_buffer *buffer;
     float pix_per_m{50};  // Le zoom
     float theta{0};       // En radians
     Vector2 origin{0, 0}; // Le milieu du view-port, en mètres
 };
 
-void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state);
-void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state);
-void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer);
+void fill_grid(World_View *view, Grid *grid, Game_state *state);
+void fill_grid2(World_View *view, Grid *grid, Game_state *state);
+void draw_grid(World_View *view, Grid *grid);
 void update_grid(Grid &grid);
-Vector2 px_to_tile(View &view, Grid &grid, Vector2 &in);
+Vector2 px_to_tile(World_View &view, Grid &grid, Vector2 &in);
 
 // NOTE: temp pour test, mais c'est des fonction internes
-bool tile_clic(View &view, Grid &grid, Vector2 &in);
-void process_input(Game_state *state, View &view, Grid &grid);
+bool tile_clic(World_View &view, Grid &grid, Vector2 &in);
+void process_input(Game_state *state, World_View &view, Grid &grid);
 void randomize_grid(Grid &grid, float proba);
 #define LOGIC_H
 #endif // !LOGIC_H

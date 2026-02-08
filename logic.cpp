@@ -5,34 +5,31 @@
 #include <cstdint>
 #include <random>
 #include <vector>
-bool get_bounding_box(View *view, Grid *grid, int *c_min, int *c_max, int *r_min, int *r_max) {
-    // NOTE: Full heuristique, pas sûr des cas limite, et pas opti. (voir bounding box "AABB")
-    // BUG: Sur des angles proches de pi/2, problème de bounding box.
-    // BUG: Lorsque incliné, bounding box trop grande?
-    float sqr = std::sqrt(std::pow(view->buffer->height, 2) + std::pow(view->buffer->width, 2)) / 2;
-    float itan = std::atan2(view->buffer->height, view->buffer->width);
-    float x_max = sqr * std::cos(-itan + std::remainder(view->theta, pi / 2)) + view->origin.x;
-    float y_max = sqr * std::sin(itan + std::remainder(view->theta, pi / 2)) + view->origin.y;
-    float x_min = -sqr * std::cos(-itan + std::remainder(view->theta, pi / 2)) + view->origin.x;
-    float y_min = -sqr * std::sin(itan + std::remainder(view->theta, pi / 2)) + view->origin.y;
 
-    // limites d'affichage théorique de la grille
-    int col_min = static_cast<int>(x_min / grid->tile_size - grid->origin.x);
-    int raw_min = static_cast<int>(y_min / grid->tile_size - grid->origin.y);
-    int col_max = static_cast<int>(x_max / grid->tile_size - grid->origin.x + 0.9f);
-    int raw_max = static_cast<int>(y_max / grid->tile_size - grid->origin.y + 0.9f);
-    if (col_min >= grid->w || raw_min >= grid->h || col_max < 0 || raw_max < 0)
-        return false; // complètement en dehors de l'écran
+bool get_bounding_box(World_View *view, Grid *grid, int *c_min, int *c_max, int *r_min, int *r_max) {
+    float sin_t = std::abs(std::sin(view->theta));
+    float cos_t = std::abs(std::cos(view->theta));
+    float w = view->buffer->fdest.w / (view->pix_per_m * 2);
+    float h = view->buffer->fdest.h / (view->pix_per_m * 2);
 
-    // limites de la grilles réelles
+    float Rx = w * cos_t + h * sin_t;
+    float Ry = w * sin_t + h * cos_t;
+
+    int col_min = static_cast<int>(std::floor((view->origin.x - Rx) / grid->tile_size));
+    int row_min = static_cast<int>(std::floor((view->origin.y - Ry) / grid->tile_size));
+    int col_max = static_cast<int>(std::ceil((view->origin.x + Rx) / grid->tile_size));
+    int row_max = static_cast<int>(std::ceil((view->origin.y + Ry) / grid->tile_size));
+    if (col_min >= grid->w || row_min >= grid->h || col_max < 0 || row_max < 0)
+        return false;
+
     *c_min = (col_min < 0) ? 0 : col_min;
-    *r_min = (raw_min < 0) ? 0 : raw_min;
+    *r_min = (row_min < 0) ? 0 : row_min;
     *c_max = (col_max > grid->w) ? grid->w : col_max;
-    *r_max = (raw_max > grid->h) ? grid->h : raw_max;
+    *r_max = (row_max > grid->h) ? grid->h : row_max;
     return true;
 }
 
-void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state) {
+void fill_grid(World_View *view, Grid *grid, Game_state *state) {
     // NOTE: Claqué au sol. Voir fill_grid2. (complexité O(n^2))
     uint64_t fill_start_time{SDL_GetTicks()};
     // calcul des limites d'affichage (en coordonnées réelles)
@@ -42,8 +39,8 @@ void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state
 
     const View_Matrix m3 = Maths::mat_w_to_scr(view->origin, view->theta,
                                                view->pix_per_m,
-                                               view->buffer->width,
-                                               view->buffer->height);
+                                               view->buffer->fdest.w,
+                                               view->buffer->fdest.h);
 
     for (int Y{raw_min}; Y < raw_max; ++Y) {
         for (int X{col_min}; X < col_max; ++X) {
@@ -70,7 +67,7 @@ void fill_grid(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state
     state->draw_tiles_time_internal += SDL_GetTicks() - fill_start_time;
 }
 
-void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *state) {
+void fill_grid2(World_View *view, Grid *grid, Game_state *state) {
     // Itère ligne par ligne pour draw plusieurs tiles à la fois quand possible pour
     // réduire le nombre d'appel à draw_polygon
     // Complexité: O(nLignesAffichées) + nVivantSurLaLigneEtNonContigu
@@ -82,8 +79,8 @@ void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *stat
 
     const View_Matrix m3 = Maths::mat_w_to_scr(view->origin, view->theta,
                                                view->pix_per_m,
-                                               view->buffer->width,
-                                               view->buffer->height);
+                                               view->buffer->fdest.w,
+                                               view->buffer->fdest.h);
     Vector2 dx_screen{
         grid->tile_size * m3.m00,
         grid->tile_size * m3.m10};
@@ -106,9 +103,8 @@ void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *stat
         row_p00 = Maths::transformed(row_p00, m3);
         row_p01 = Maths::transformed(row_p01, m3);
         int Xtmp{col_min};
-        // NOTE: Amélioration possible: accéder à la grille par pointeur direct
         while (Xtmp < col_max) {
-            while (Xtmp < col_max && !grid->get(Xtmp, Y)) {
+            while (Xtmp < col_max && !grid->current[(Xtmp + 1) + (grid->w + 2) * (Y + 1)]) {
                 ++Xtmp;
             }
             if (Xtmp >= col_max)
@@ -116,7 +112,7 @@ void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *stat
 
             // On est sur une case allumée, on cherche sa fin
             int start_X{Xtmp};
-            while (Xtmp < col_max && grid->get(Xtmp, Y)) {
+            while (Xtmp < col_max && grid->current[(Xtmp + 1) + (grid->w + 2) * (Y + 1)]) {
                 Xtmp++;
             }
             int end_X{Xtmp};
@@ -136,7 +132,7 @@ void fill_grid2(View *view, Grid *grid, SDL_Renderer *renderer, Game_state *stat
     }
 }
 
-void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
+void draw_grid(World_View *view, Grid *grid) {
     // calcul des limites d'affichage (en coordonnées réelles)
     if (grid->tile_size * view->pix_per_m < 5)
         return; // zoom trop faible, inutile d'afficher la grille
@@ -146,8 +142,8 @@ void draw_grid(View *view, Grid *grid, SDL_Renderer *renderer) {
 
     const View_Matrix m3 = Maths::mat_w_to_scr(view->origin, view->theta,
                                                view->pix_per_m,
-                                               view->buffer->width,
-                                               view->buffer->height);
+                                               view->buffer->fdest.w,
+                                               view->buffer->fdest.h);
     // lignes verticales
     for (int X{col_min}; X <= col_max; ++X) {
         Vector2 p1 = {X * grid->tile_size + grid->origin.x, raw_min * grid->tile_size + grid->origin.y};
@@ -196,17 +192,17 @@ void update_grid(Grid &grid) {
     std::swap(grid.current, grid.next);
 }
 
-Vector2 px_to_tile(View &view, Grid &grid, Vector2 &in) {
+Vector2 px_to_tile(World_View &view, Grid &grid, Vector2 &in) {
     // Transforme les coordonnées Ecran (px) vers coordonnées dans le repère de la grille.
     // Peut-être out of bounds sans problème.
     View_Matrix m = Maths::mat_scr_to_w(view.origin, view.theta, view.pix_per_m,
-                                        view.buffer->width, view.buffer->height);
+                                        view.buffer->fdest.w, view.buffer->fdest.h);
     Vector2 real{Maths::transformed(in, m)};
     real += grid.origin;
     return {real.x / grid.tile_size, real.y / grid.tile_size};
 }
 
-bool tile_clic(View &view, Grid &grid, Vector2 in, int value) {
+bool tile_clic(World_View &view, Grid &grid, Vector2 in, int value) {
     // Allume la case cliquée (prend les coordonnées pixel brutes de l'écran) si la case est valide.
     // Ne fait rien sinon. Renvoie true si succès, false si échec.
     Vector2 px{px_to_tile(view, grid, in)};
@@ -218,7 +214,7 @@ bool tile_clic(View &view, Grid &grid, Vector2 in, int value) {
     return true;
 }
 
-void process_input(Game_state *state, View &view, Grid &grid) {
+void process_input(Game_state *state, World_View &view, Grid &grid) {
     // std::cout << "    Processing input\n";
     uint64_t start_time = SDL_GetTicks();
     bool input_processed{false};
