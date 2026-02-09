@@ -220,10 +220,10 @@ void process_input(Game_state *state, World_view &view, Grid &grid) {
     bool input_processed{false};
     // TODO: Améliorer ça?
     float dt = SDL_GetTicks() - state->last_input_proc;
-    const float MOVE_UNIT{0.02f * dt};             // Constante temporaire, à voir plus tard.
-    const float ZOOM_UNIT{0.10f * view.pix_per_m}; // Constante temporaire, à voir plus tard.
-    const float ROT_UNIT{0.002f * dt};             // Constante temporaire, à voir plus tard.
-    const float MSPT_MULT{0.1f};                   // Constante temporaire, à voir plus tard.
+    const float MOVE_UNIT{(0.12f / view.pix_per_m) * dt}; // Constante temporaire, à voir plus tard.
+    const float ZOOM_UNIT{0.08f * view.pix_per_m};        // Constante temporaire, à voir plus tard.
+    const float ROT_UNIT{0.001f * dt};                    // Constante temporaire, à voir plus tard.
+    const float MSPT_MULT{0.1f};                          // Constante temporaire, à voir plus tard.
     if (state->input.mv_l.press) {
         // move left
         view.origin += Maths::transformed({-MOVE_UNIT, 0},
@@ -321,7 +321,7 @@ void randomize_grid(Grid &grid, float proba) {
 }
 
 void render_menu(Menu_view *view) {
-    std::cout << "enter render_menu\n";
+    // std::cout << "enter render_menu\n";
     view->buff->clear_pixel(0xFFFFFFFF);
     Vector2 p1, p2, p3, p4;
     for (int i = 0; i < view->buttons.size(); ++i) {
@@ -333,4 +333,32 @@ void render_menu(Menu_view *view) {
         Graphics::draw_convex_quad(view->buff, corners, 0xFFFF0000);
     }
     view->buff->waiting_update = true;
+}
+
+void print_logs(Game_state *state) {
+    std::cout << "[STATS] AVG Effective TPS: " << state->ticks_since_log / 2.000f << '\n';
+    std::cout << "[STATS] AVG MSPT: " << static_cast<float>(state->process_time) * 1000 / (state->ticks_since_log * SDL_GetPerformanceFrequency()) << '\n';
+    std::cout << "[STATS] AVG MSPF: " << static_cast<float>(state->frame_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
+    // std::cout << "[STATS] AVG MSPDrawGrid: " << static_cast<float>(state->draw_grid_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
+    // std::cout << "[STATS] AVG MSPDrawTiles: " << static_cast<float>(state->draw_tiles_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
+    // std::cout << "[STATS] AVG MSPDrawTilesInternal: " << static_cast<float>(state->draw_tiles_time_internal) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
+    // std::cout << "[STATS] AVG MSPDrawPoly (x10K): " << 10000 * static_cast<float>(state->draw_poly_time) / state->draw_poly_since_log << '\n';
+    // std::cout << "[STATS] AVG MSPClrPx: " << static_cast<float>(state->clr_px_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
+    // std::cout << "[STATS] AVG MSPBuffUpdt: " << static_cast<float>(state->buff_updt_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
+    // std::cout << "[STATS] AVG Poly/F: " << static_cast<float>(state->draw_poly_since_log) / state->frames_since_log << '\n';
+    std::cout << '\n';
+    state->ticks_since_log = 0;
+    state->frames_since_log = 0;
+    state->draw_poly_since_log = 0;
+    state->process_time = 0;
+    state->frame_time = 0;
+    state->draw_grid_time = 0;
+    state->fill_tiles_time = 0;
+    state->draw_tiles_time_internal = 0;
+    state->draw_tiles_count_internal = 0;
+    state->draw_poly_time = 0;
+    state->clr_px_time = 0;
+    state->render_menu_time = 0;
+    state->buff_updt_time = 0;
+    state->last_log = SDL_GetPerformanceCounter();
 }

@@ -1,17 +1,7 @@
 #include "main.h"
-#include "gui.h"
 #include "logic.h"
 #include "maths.h"
-#include <SDL3/SDL_events.h>
-#include <SDL3/SDL_init.h>
-#include <SDL3/SDL_keycode.h>
-#include <SDL3/SDL_mouse.h>
-#include <SDL3/SDL_render.h>
-#include <SDL3/SDL_scancode.h>
 #include <SDL3/SDL_timer.h>
-#include <SDL3/SDL_video.h>
-#include <cstddef>
-#include <iostream>
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL_main.h>
 
@@ -22,15 +12,15 @@ static World_view *game_world_view = new World_view{&screen->main_view};
 static Menu_view *game_menu_view = new Menu_view{&screen->menu_view};
 static Grid *game_grid = new Grid(1000, 1000);
 
-Events_button *bouton1 = new Events_button();
-Events_button *bouton2 = new Events_button();
+// Events_button *bouton1 = new Events_button();
+// Events_button *bouton2 = new Events_button();
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::cerr << "Init video en échec.\n";
         return SDL_APP_FAILURE;
     }
-    if (!SDL_CreateWindowAndRenderer("Ma fenêtre.",
+    if (!SDL_CreateWindowAndRenderer("Game of life",
                                      1440, 810,
                                      SDL_WINDOW_RESIZABLE,
                                      &game_window, &game_renderer)) {
@@ -38,21 +28,20 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
         return SDL_APP_FAILURE;
     }
     Game_state *state = new Game_state{};
-    state->last_tick = SDL_GetTicks();
-    state->last_frame = SDL_GetTicks();
-    state->last_log = SDL_GetTicks();
-    state->last_input_proc = SDL_GetTicks();
+    state->last_tick = SDL_GetPerformanceCounter();
+    state->last_frame = SDL_GetPerformanceCounter();
+    state->last_log = SDL_GetPerformanceCounter();
+    state->last_input_proc = SDL_GetPerformanceCounter();
     *appstate = state;
-    screen->resize(game_renderer, 1440, 810);
     game_world_view->pix_per_m = 1.0;
-    game_world_view->theta = 0.15;
+    game_world_view->theta = 0.2;
     game_world_view->origin = {500, 500};
 
-    randomize_grid(*game_grid, 0.5f);
+    // randomize_grid(*game_grid, 0.5f);
 
     // TODO: Boutons
-    game_menu_view->buttons.push_back(*bouton1);
-    game_menu_view->buttons.push_back(*bouton2);
+    // game_menu_view->buttons.push_back(*bouton1);
+    // game_menu_view->buttons.push_back(*bouton2);
 
     std::cout << "App initilisée.\n";
     return SDL_APP_CONTINUE;
@@ -60,24 +49,24 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
     Game_state *state = static_cast<Game_state *>(appstate);
-    uint64_t start_time{SDL_GetTicks()};
+    uint64_t start_time{SDL_GetPerformanceCounter()};
 
     // Process input: max speed
     process_input(state, *game_world_view, *game_grid);
 
     // Update grid: target speed: state.mspt
-    if (start_time - state->last_tick > state->mspt) {
+    if (static_cast<float>((start_time - state->last_tick) * 1000) / SDL_GetPerformanceFrequency() > state->mspt) {
         uint64_t start_process_time{SDL_GetPerformanceCounter()};
         if (state->playing) {
             update_grid(*game_grid);
         }
-        state->last_tick += state->mspt;
+        state->last_tick = SDL_GetPerformanceCounter();
         state->process_time += SDL_GetPerformanceCounter() - start_process_time;
         ++state->ticks_since_log;
     }
 
-    // Render screen: target speed: 50 MSPRender
-    if (start_time - state->last_frame > 100) {
+    // Render screen: target speed: 33 MSPRender
+    if (static_cast<float>((start_time - state->last_frame) * 1000) / SDL_GetPerformanceFrequency() > 33) {
 
         // Render world view
         uint64_t start_render_time{SDL_GetPerformanceCounter()};
@@ -93,52 +82,28 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         screen->main_view.waiting_update = true;
         state->draw_grid_time += SDL_GetPerformanceCounter() - start_grid_time;
 
-        // Render menu:
+        // Render menu (pas vraiment implémenté):
         uint64_t start_render_menu_time{SDL_GetPerformanceCounter()};
-        if (screen->menu_view.active && screen->menu_view.waiting_update) {
-            render_menu(game_menu_view);
-        }
+        // if (screen->menu_view.active && screen->menu_view.waiting_update) {
+        //     render_menu(game_menu_view);
+        // }
         state->render_menu_time += SDL_GetPerformanceCounter() - start_render_menu_time;
 
         // Render screen
         uint64_t start_updt_buff{SDL_GetPerformanceCounter()};
         screen->main_view.upload_if_needed();
-        screen->menu_view.upload_if_needed();
+        // screen->menu_view.upload_if_needed();
         screen->render(game_renderer);
         state->buff_updt_time += SDL_GetPerformanceCounter() - start_updt_buff;
 
-        state->last_frame += 100;
+        state->last_frame = SDL_GetPerformanceCounter();
         state->frame_time += SDL_GetPerformanceCounter() - start_render_time;
         ++state->frames_since_log;
     }
 
     // Log stats: target speed: 2000 MSPLog
-    if (start_time - state->last_log > 2000) {
-        // std::cout << "[STATS] AVG Effective TPS: " << state->ticks_since_log / 2.000f << '\n';
-        // std::cout << "[STATS] AVG MSPT: " << static_cast<float>(state->process_time) * 1000 / (state->ticks_since_log * SDL_GetPerformanceFrequency()) << '\n';
-        // std::cout << "[STATS] AVG MSPF: " << static_cast<float>(state->frame_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
-        // std::cout << "[STATS] AVG MSPDrawGrid: " << static_cast<float>(state->draw_grid_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
-        // std::cout << "[STATS] AVG MSPDrawTiles: " << static_cast<float>(state->draw_tiles_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
-        // std::cout << "[STATS] AVG MSPDrawTilesInternal: " << static_cast<float>(state->draw_tiles_time_internal) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
-        // std::cout << "[STATS] AVG MSPDrawPoly (x10K): " << 10000 * static_cast<float>(state->draw_poly_time) / state->draw_poly_since_log << '\n';
-        // std::cout << "[STATS] AVG MSPClrPx: " << static_cast<float>(state->clr_px_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
-        // std::cout << "[STATS] AVG MSPBuffUpdt: " << static_cast<float>(state->buff_updt_time) * 1000 / (state->frames_since_log * SDL_GetPerformanceFrequency()) << '\n';
-        // std::cout << "[STATS] AVG Poly/F: " << static_cast<float>(state->draw_poly_since_log) / state->frames_since_log << '\n';
-        // std::cout << '\n';
-        state->ticks_since_log = 0;
-        state->frames_since_log = 0;
-        state->draw_poly_since_log = 0;
-        state->process_time = 0;
-        state->frame_time = 0;
-        state->draw_grid_time = 0;
-        state->fill_tiles_time = 0;
-        state->draw_tiles_time_internal = 0;
-        state->draw_tiles_count_internal = 0;
-        state->draw_poly_time = 0;
-        state->clr_px_time = 0;
-        state->render_menu_time = 0;
-        state->buff_updt_time = 0;
-        state->last_log = SDL_GetTicks();
+    if (static_cast<float>((start_time - state->last_log) * 1000) / SDL_GetPerformanceFrequency() > 2000) {
+        print_logs(state);
     }
     return SDL_APP_CONTINUE;
 }

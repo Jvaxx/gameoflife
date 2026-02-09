@@ -1,5 +1,4 @@
 #ifndef LOGIC_H
-#include "gui.h"
 #include "maths.h"
 #include <SDL3/SDL_rect.h>
 #include <SDL3/SDL_render.h>
@@ -210,5 +209,6 @@ bool tile_clic(World_view &view, Grid &grid, Vector2 &in);
 void process_input(Game_state *state, World_view &view, Grid &grid);
 void randomize_grid(Grid &grid, float proba);
 void render_menu(Menu_view *view);
+void print_logs(Game_state *state);
 #define LOGIC_H
 #endif // !LOGIC_H
