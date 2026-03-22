@@ -12,8 +12,8 @@ static World_view *game_world_view = new World_view{&screen->main_view};
 static Menu_view *game_menu_view = new Menu_view{&screen->menu_view};
 static Grid *game_grid = new Grid(1000, 1000);
 
-// Events_button *bouton1 = new Events_button();
-// Events_button *bouton2 = new Events_button();
+Events_button *bouton1 = new Events_button();
+Events_button *bouton2 = new Events_button();
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -33,15 +33,15 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     state->last_log = SDL_GetPerformanceCounter();
     state->last_input_proc = SDL_GetPerformanceCounter();
     *appstate = state;
-    game_world_view->pix_per_m = 1.0;
+    game_world_view->pix_per_m = 10.0;
     game_world_view->theta = 0.2;
-    game_world_view->origin = {500, 500};
+    game_world_view->origin = {100, 100};
 
-    // randomize_grid(*game_grid, 0.5f);
+    randomize_grid(*game_grid, 0.5f);
 
     // TODO: Boutons
-    // game_menu_view->buttons.push_back(*bouton1);
-    // game_menu_view->buttons.push_back(*bouton2);
+    game_menu_view->buttons.push_back(*bouton1);
+    game_menu_view->buttons.push_back(*bouton2);
 
     std::cout << "App initilisée.\n";
     return SDL_APP_CONTINUE;
@@ -84,15 +84,14 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
         // Render menu (pas vraiment implémenté):
         uint64_t start_render_menu_time{SDL_GetPerformanceCounter()};
-        // if (screen->menu_view.active && screen->menu_view.waiting_update) {
-        //     render_menu(game_menu_view);
-        // }
+        if (screen->menu_view.active && screen->menu_view.waiting_update) {
+            render_menu(game_menu_view);
+        }
         state->render_menu_time += SDL_GetPerformanceCounter() - start_render_menu_time;
 
         // Render screen
         uint64_t start_updt_buff{SDL_GetPerformanceCounter()};
         screen->main_view.upload_if_needed();
-        // screen->menu_view.upload_if_needed();
         screen->render(game_renderer);
         state->buff_updt_time += SDL_GetPerformanceCounter() - start_updt_buff;
 
